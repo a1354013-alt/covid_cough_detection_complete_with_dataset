@@ -4,8 +4,8 @@ import path from "path";
 import { fileURLToPath } from "url";
 import Busboy from "busboy";
 import type { FileInfo } from "busboy";
-import { validateAudioFile } from "./audio-validator";
-import { logger } from "./logger";
+import { validateAudioFile } from "./audio-validator.js";
+import { logger } from "./logger.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -127,8 +127,10 @@ setInterval(cleanupRateLimitMap, RATE_LIMIT_CLEANUP_INTERVAL);
 // ============================================================================
 
 /**
- * Multipart form-data parser using busboy for streaming
- * Handles boundary issues and prevents loading entire file into memory
+ * Parse multipart form data using Busboy
+ * Streams multipart parsing with size limit enforcement.
+ * Note: Currently buffers file content in memory (up to 10MB limit).
+ * Future optimization: Stream directly to Python backend or temp file.
  */
 async function parseMultipart(req: Request): Promise<ParseMultipartResult> {
   return new Promise((resolve) => {
@@ -140,7 +142,7 @@ async function parseMultipart(req: Request): Promise<ParseMultipartResult> {
     }
 
     let resolved = false;
-    let totalSize = 0;
+    let fileBytes = 0;
 
     // Timeout protection
     const timeoutHandle = setTimeout(() => {
@@ -168,10 +170,10 @@ async function parseMultipart(req: Request): Promise<ParseMultipartResult> {
 
         file.on("data", (chunk: Buffer) => {
           fileSize += chunk.length;
-          totalSize += chunk.length;
+          fileBytes += chunk.length;
 
           // Check size limits
-          if (totalSize > MAX_FILE_SIZE) {
+          if (fileBytes > MAX_FILE_SIZE) {
             file.destroy();
             bb.destroy();
             clearTimeout(timeoutHandle);
@@ -179,7 +181,7 @@ async function parseMultipart(req: Request): Promise<ParseMultipartResult> {
               resolved = true;
               resolve({
                 error: "File too large",
-                details: `Maximum file size is ${MAX_FILE_SIZE / 1024 / 1024}MB`,
+                details: `Audio file size exceeds ${MAX_FILE_SIZE / 1024 / 1024}MB limit`,
               });
             }
             return;
@@ -204,6 +206,7 @@ async function parseMultipart(req: Request): Promise<ParseMultipartResult> {
           clearTimeout(timeoutHandle);
           if (!resolved) {
             resolved = true;
+            logger.error("File upload error", err);
             resolve({
               error: "File upload error",
               details: err.message,
@@ -216,6 +219,7 @@ async function parseMultipart(req: Request): Promise<ParseMultipartResult> {
         clearTimeout(timeoutHandle);
         if (!resolved) {
           resolved = true;
+          logger.error("Busboy parsing error", err);
           resolve({
             error: "Failed to parse multipart data",
             details: err.message,
@@ -227,15 +231,18 @@ async function parseMultipart(req: Request): Promise<ParseMultipartResult> {
         if (!resolved) {
           clearTimeout(timeoutHandle);
           resolved = true;
-          resolve({ error: "No audio file found in request" });
+          resolve({ error: "No audio file found in request", details: "Ensure audio or file field is present" });
         }
       });
 
+      // Pipe request to busboy parser
       req.pipe(bb);
     } catch (err) {
       clearTimeout(timeoutHandle);
       if (!resolved) {
         resolved = true;
+        const parseErr = err instanceof Error ? err : new Error(String(err));
+        logger.error("Multipart parsing exception", parseErr);
         resolve({
           error: "Failed to parse multipart data",
           details: err instanceof Error ? err.message : String(err),
@@ -283,7 +290,14 @@ async function startServer() {
     const isHttps = pythonUrl.protocol === "https:";
     const httpProtocol = isHttps ? "https" : "http";
     const wsProtocol = isHttps ? "wss" : "ws";
-    const connectSrc = `'self' ${httpProtocol}://${pythonHost} ${wsProtocol}://${pythonHost}`;
+    
+    // Allow extra connect sources via environment variable (e.g., for Sentry, analytics)
+    const extraConnectSrc = process.env.CSP_CONNECT_SRC_EXTRA || "";
+    const connectSrcList = ["'self'", `${httpProtocol}://${pythonHost}`, `${wsProtocol}://${pythonHost}`];
+    if (extraConnectSrc) {
+      connectSrcList.push(...extraConnectSrc.split(",").map(s => s.trim()));
+    }
+    const connectSrc = connectSrcList.join(" ");
     
     res.setHeader(
       "Content-Security-Policy",

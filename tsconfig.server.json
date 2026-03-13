@@ -3,8 +3,9 @@
   "compilerOptions": {
     "noEmit": false,
     "outDir": "./dist",
-    "rootDir": "./",
-    "module": "ESNext",
+    "rootDir": "./server",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
     "target": "ES2020",
     "lib": ["ES2020"],
     "types": ["node"],
@@ -12,5 +13,5 @@
     "skipLibCheck": true
   },
   "include": ["server/**/*"],
-  "exclude": ["node_modules", "client", "dist"]
+  "exclude": ["node_modules", "client", "dist", "shared"]
 }
