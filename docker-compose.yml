@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  # Node.js Backend + Frontend
+  node-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.node
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - PYTHON_API_URL=http://python-backend:8000
+      - RATE_LIMIT_MAX_REQUESTS=30
+    depends_on:
+      - python-backend
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - covid-network
+    volumes:
+      - ./dist:/app/dist:ro
+
+  # Python Backend
+  python-backend:
+    build:
+      context: ./python_project
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - LOG_LEVEL=info
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - covid-network
+    volumes:
+      - ./python_project/models:/app/models
+      - ./python_project/data:/app/data
+
+networks:
+  covid-network:
+    driver: bridge
+
+volumes:
+  node-data:
+  python-data:

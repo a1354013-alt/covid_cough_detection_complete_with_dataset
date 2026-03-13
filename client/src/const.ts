@@ -1,17 +1,17 @@
+// Shared constants
 export { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
 
-// Generate login URL at runtime so redirect URI reflects the current origin.
-export const getLoginUrl = () => {
-  const oauthPortalUrl = import.meta.env.VITE_OAUTH_PORTAL_URL;
-  const appId = import.meta.env.VITE_APP_ID;
-  const redirectUri = `${window.location.origin}/api/oauth/callback`;
-  const state = btoa(redirectUri);
+// App configuration
+export const APP_NAME = "COVID-19 Cough Detection";
+export const APP_VERSION = "1.0.0";
 
-  const url = new URL(`${oauthPortalUrl}/app-auth`);
-  url.searchParams.set("appId", appId);
-  url.searchParams.set("redirectUri", redirectUri);
-  url.searchParams.set("state", state);
-  url.searchParams.set("type", "signIn");
+// API configuration
+export const API_BASE_URL = "/api";
 
-  return url.toString();
-};
+// Audio recording configuration
+export const AUDIO_CONFIG = {
+  MAX_RECORDING_TIME: 30, // seconds
+  MIN_RECORDING_TIME: 2, // seconds
+  SAMPLE_RATE: 44100,
+  CHANNELS: 1,
+} as const;
