@@ -5,6 +5,7 @@ Provides REST API endpoints for audio upload, processing, and inference.
 """
 
 import logging
+import os
 import time
 from typing import Optional
 from contextlib import asynccontextmanager
@@ -51,8 +52,14 @@ async def lifespan(app: FastAPI):
     )
     logger.info("✓ Audio processor initialized")
 
-    model_inference = ModelInference(device="cpu")
+    # Load model path from environment variable (optional)
+    model_path = os.getenv("MODEL_PATH")
+    model_inference = ModelInference(model_path=model_path, device="cpu")
     logger.info("✓ Model inference initialized")
+    if model_path:
+        logger.info(f"  Model path: {model_path}")
+    else:
+        logger.info("  Using stub model (demo mode)")
 
     logger.info("API startup complete")
 

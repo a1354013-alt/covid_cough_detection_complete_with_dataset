@@ -80,10 +80,14 @@ class ModelInference:
         self.model_version = "stub-0.1 (demo mode)"
         self.is_stub_model = True
 
-        if model_path and Path(model_path).exists():
-            self.load_model(model_path)
+        if model_path:
+            if Path(model_path).exists():
+                self.load_model(model_path)
+            else:
+                logger.warning(f"Model path provided but not found: {model_path}. Using stub model.")
+                self._create_stub_model()
         else:
-            logger.warning("No model path provided or model not found. Using stub model.")
+            logger.info("No MODEL_PATH environment variable set. Using stub model for demo.")
             self._create_stub_model()
 
     def _create_stub_model(self) -> None:

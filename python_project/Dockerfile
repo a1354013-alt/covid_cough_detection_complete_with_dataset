@@ -4,8 +4,10 @@ FROM python:3.10-slim
 WORKDIR /app
 
 # Install system dependencies
+# ffmpeg is required for librosa to load mp3, webm, m4a, and other compressed audio formats
 RUN apt-get update && apt-get install -y \
     libsndfile1 \
+    ffmpeg \
     curl \
     && rm -rf /var/lib/apt/lists/*
 

@@ -213,9 +213,8 @@ export function getAudioFileName(
     extension = "wav";
   } else if (mimeType.includes("ogg")) {
     extension = "ogg";
-  } else if (mimeType.includes("flac")) {
-    extension = "flac";
   }
+  // Note: flac is not supported in this MVP version
 
   return `cough_${year}${month}${date}_${hours}${minutes}${seconds}.${extension}`;
 }
