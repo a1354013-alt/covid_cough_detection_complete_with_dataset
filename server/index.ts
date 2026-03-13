@@ -26,6 +26,7 @@ interface ErrorResponse {
 interface ParseMultipartResult {
   file?: Buffer;
   filename?: string;
+  mimeType?: string;
   error?: string;
   details?: string;
 }
@@ -39,6 +40,7 @@ const REQUEST_TIMEOUT = parseInt(process.env.REQUEST_TIMEOUT || "60000", 10);
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const RATE_LIMIT_WINDOW = 60000; // 1 minute
 const RATE_LIMIT_MAX_REQUESTS = 30;
+const RATE_LIMIT_CLEANUP_INTERVAL = 5 * 60 * 1000; // 5 minutes
 
 logger.info("Configuration", {
   python_api_url: PYTHON_API_URL,
@@ -49,7 +51,7 @@ logger.info("Configuration", {
 });
 
 // ============================================================================
-// Rate Limiting
+// Rate Limiting with Cleanup
 // ============================================================================
 
 interface RateLimitEntry {
@@ -88,12 +90,37 @@ function checkRateLimit(req: Request): boolean {
   return entry.count <= RATE_LIMIT_MAX_REQUESTS;
 }
 
+// Cleanup expired rate limit entries
+function cleanupRateLimitMap(): void {
+  const now = Date.now();
+  let cleaned = 0;
+
+  const keysToDelete: string[] = [];
+  rateLimitMap.forEach((entry, key) => {
+    if (now > entry.resetTime) {
+      keysToDelete.push(key);
+      cleaned++;
+    }
+  });
+
+  keysToDelete.forEach((key) => {
+    rateLimitMap.delete(key);
+  });
+
+  if (cleaned > 0) {
+    logger.debug("Rate limit cleanup", { cleaned, remaining: rateLimitMap.size });
+  }
+}
+
+// Start cleanup interval
+setInterval(cleanupRateLimitMap, RATE_LIMIT_CLEANUP_INTERVAL);
+
 // ============================================================================
-// Multipart Parser
+// Multipart Parser with Size Limit
 // ============================================================================
 
 /**
- * Simple multipart form-data parser
+ * Multipart form-data parser with size limit and proper binary handling
  */
 async function parseMultipart(req: Request): Promise<ParseMultipartResult> {
   return new Promise((resolve) => {
@@ -112,34 +139,98 @@ async function parseMultipart(req: Request): Promise<ParseMultipartResult> {
 
     const boundary = boundaryMatch[1];
     const chunks: Buffer[] = [];
+    let totalSize = 0;
     let resolved = false;
+    let timedOut = false;
 
-    req.on("data", (chunk) => {
+    // Timeout protection
+    const timeoutHandle = setTimeout(() => {
+      if (!resolved) {
+        timedOut = true;
+        resolved = true;
+        req.destroy();
+        resolve({
+          error: "Request timeout",
+          details: "Multipart parsing took too long",
+        });
+      }
+    }, REQUEST_TIMEOUT);
+
+    req.on("data", (chunk: Buffer) => {
+      // Check size limit before adding chunk
+      totalSize += chunk.length;
+      if (totalSize > MAX_FILE_SIZE) {
+        clearTimeout(timeoutHandle);
+        if (!resolved) {
+          resolved = true;
+          req.destroy();
+          resolve({
+            error: "File too large",
+            details: `Maximum file size is ${MAX_FILE_SIZE / 1024 / 1024}MB`,
+          });
+        }
+        return;
+      }
+
       chunks.push(chunk);
     });
 
     req.on("end", () => {
-      if (resolved) return;
+      clearTimeout(timeoutHandle);
+      if (resolved || timedOut) return;
       resolved = true;
 
       try {
         const body = Buffer.concat(chunks);
-        const bodyStr = body.toString("binary");
-        const parts = bodyStr.split(`--${boundary}`);
 
+        // Extract boundary and parts more carefully
+        const boundaryBuffer = Buffer.from(`--${boundary}`);
+        const parts: Buffer[] = [];
+        let currentPos = 0;
+
+        // Find all boundary positions
+        while (currentPos < body.length) {
+          const boundaryPos = body.indexOf(boundaryBuffer, currentPos);
+          if (boundaryPos === -1) break;
+
+          if (currentPos > 0) {
+            parts.push(body.slice(currentPos, boundaryPos));
+          }
+          currentPos = boundaryPos + boundaryBuffer.length;
+        }
+
+        // Add final part
+        if (currentPos < body.length) {
+          parts.push(body.slice(currentPos));
+        }
+
+        // Find audio file part
         for (const part of parts) {
-          if (part.includes('name="audio"')) {
-            const filenameMatch = part.match(/filename="([^"]+)"/);
+          const partStr = part.toString("binary", 0, Math.min(500, part.length));
+
+          if (partStr.includes('name="audio"') || partStr.includes('name="file"')) {
+            // Extract filename
+            const filenameMatch = partStr.match(/filename="([^"]+)"/);
             const filename = filenameMatch ? filenameMatch[1] : "audio.wav";
 
-            const headerEndIndex = part.indexOf("\r\n\r\n");
+            // Extract MIME type
+            const mimeMatch = partStr.match(/Content-Type:\s*([^\r\n]+)/i);
+            const mimeType = mimeMatch ? mimeMatch[1].trim() : "audio/wav";
+
+            // Find header/body separator
+            const headerEndIndex = part.indexOf(Buffer.from("\r\n\r\n"));
             if (headerEndIndex !== -1) {
               const fileStart = headerEndIndex + 4;
-              const fileEnd = part.lastIndexOf("\r\n");
-              const fileContent = part.substring(fileStart, fileEnd);
-              const fileBuffer = Buffer.from(fileContent, "binary");
+              // Find trailing boundary or CRLF
+              let fileEnd = part.length;
+              const trailingCRLF = part.lastIndexOf(Buffer.from("\r\n"));
+              if (trailingCRLF > fileStart) {
+                fileEnd = trailingCRLF;
+              }
 
-              resolve({ file: fileBuffer, filename });
+              const fileContent = part.slice(fileStart, fileEnd);
+
+              resolve({ file: fileContent, filename, mimeType });
               return;
             }
           }
@@ -155,6 +246,7 @@ async function parseMultipart(req: Request): Promise<ParseMultipartResult> {
     });
 
     req.on("error", (err) => {
+      clearTimeout(timeoutHandle);
       if (resolved) return;
       resolved = true;
       resolve({
@@ -182,16 +274,34 @@ async function startServer() {
     // CORS headers
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.setHeader(
+      "Access-Control-Allow-Headers",
+      "Content-Type, Authorization"
+    );
 
-    // Security headers
+    // Security headers with proper CSP
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "DENY");
     res.setHeader("X-XSS-Protection", "1; mode=block");
     res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
-    res.setHeader("Content-Security-Policy", "default-src 'self'");
+
+    // Improved CSP with blob and media support
+    res.setHeader(
+      "Content-Security-Policy",
+      "default-src 'self'; " +
+        "img-src 'self' data: blob:; " +
+        "media-src 'self' blob:; " +
+        "style-src 'self' 'unsafe-inline'; " +
+        "script-src 'self'; " +
+        "connect-src 'self' http://localhost:* ws://localhost:*"
+    );
 
     next();
+  });
+
+  // OPTIONS handler for preflight requests
+  app.options("*", (_req: Request, res: Response) => {
+    res.status(200).end();
   });
 
   // Request logging middleware
@@ -228,7 +338,7 @@ async function startServer() {
 
   /**
    * POST /api/predict
-   * 
+   *
    * Proxies audio prediction to Python backend or uses local inference
    */
   app.post("/api/predict", async (req: Request, res: Response): Promise<void> => {
@@ -236,7 +346,7 @@ async function startServer() {
 
     try {
       // Parse multipart form data
-      const { file, filename, error: parseError } = await parseMultipart(req);
+      const { file, filename, mimeType, error: parseError } = await parseMultipart(req);
 
       if (parseError) {
         logger.warn("Multipart parse error", { error: parseError });
@@ -268,18 +378,22 @@ async function startServer() {
         return;
       }
 
-      logger.logPrediction(filename || "unknown", file.length, validation.format || "unknown");
+      logger.logPrediction(
+        filename || "unknown",
+        file.length,
+        validation.format || "unknown"
+      );
 
       // Try to use Python backend first
-      const pythonResponse = await forwardToPythonBackend(file, filename || "audio.wav");
+      const pythonResponse = await forwardToPythonBackend(
+        file,
+        filename || "audio.wav",
+        mimeType || "audio/wav"
+      );
 
       if (pythonResponse) {
         const duration = Date.now() - startTime;
-        logger.logPredictionResult(
-          pythonResponse.label,
-          pythonResponse.prob,
-          duration
-        );
+        logger.logPredictionResult(pythonResponse.label, pythonResponse.prob, duration);
         res.json(pythonResponse);
         return;
       }
@@ -292,27 +406,33 @@ async function startServer() {
       res.json(stubPrediction);
     } catch (err) {
       const duration = Date.now() - startTime;
-      logger.error("Prediction error", err instanceof Error ? err : new Error(String(err)), {
-        duration_ms: duration,
-      });
+      logger.error(
+        "Prediction error",
+        err instanceof Error ? err : new Error(String(err)),
+        {
+          duration_ms: duration,
+        }
+      );
 
       res.status(500).json({
         error: "Internal server error",
-        details: process.env.NODE_ENV === "development" && err instanceof Error ? err.message : undefined,
+        details:
+          import.meta.env.DEV && err instanceof Error ? err.message : undefined,
       } as ErrorResponse);
     }
   });
 
   /**
-   * Forward request to Python backend
+   * Forward request to Python backend with correct MIME type
    */
   async function forwardToPythonBackend(
     fileBuffer: Buffer,
-    filename: string
+    filename: string,
+    mimeType: string
   ): Promise<PredictionResponse | null> {
     try {
       const formData = new FormData();
-      const blob = new Blob([fileBuffer], { type: "audio/webm" });
+      const blob = new Blob([fileBuffer], { type: mimeType });
       formData.append("file", blob, filename);
 
       const response = await fetch(`${PYTHON_API_URL}/predict`, {
@@ -354,7 +474,7 @@ async function startServer() {
     return {
       label: isPositive ? "positive" : "negative",
       prob: isPositive ? prob : 1 - prob,
-      model_version: "stub-0.1",
+      model_version: "stub-0.1 (demo mode)",
     };
   }
 
@@ -397,7 +517,7 @@ async function startServer() {
         const pythonVersion = await pythonVersionResponse.json();
         res.json({
           api_version: "1.0.0",
-          model_version: pythonVersion.model_version || "stub-0.1",
+          model_version: pythonVersion.model_version || "stub-0.1 (demo mode)",
           python_backend: "connected",
           timestamp: new Date().toISOString(),
         });
@@ -409,7 +529,7 @@ async function startServer() {
 
     res.json({
       api_version: "1.0.0",
-      model_version: "stub-0.1",
+      model_version: "stub-0.1 (demo mode)",
       python_backend: "unavailable",
       timestamp: new Date().toISOString(),
     });
@@ -435,7 +555,7 @@ async function startServer() {
     logger.error("Unhandled error", err);
     res.status(500).json({
       error: "Internal server error",
-      details: process.env.NODE_ENV === "development" ? err.message : undefined,
+      details: import.meta.env.DEV ? err.message : undefined,
     } as ErrorResponse);
   });
 
@@ -448,21 +568,25 @@ async function startServer() {
   server.listen(port, () => {
     logger.info("Server started", {
       port,
-      environment: process.env.NODE_ENV || "development",
+      environment: import.meta.env.DEV ? "development" : "production",
       python_api_url: PYTHON_API_URL,
     });
-
-    console.log(`\n🚀 COVID-19 Cough Detection API`);
-    console.log(`📍 Server running on http://localhost:${port}/`);
-    console.log(`🐍 Python backend: ${PYTHON_API_URL}`);
-    console.log(`\n📡 API Endpoints:`);
-    console.log(`   POST /api/predict  - Audio prediction`);
-    console.log(`   GET  /api/health   - Health check`);
-    console.log(`   GET  /api/version  - API version\n`);
   });
+
+  // Graceful shutdown
+  process.on("SIGTERM", () => {
+    logger.info("SIGTERM received, shutting down gracefully");
+    server.close(() => {
+      logger.info("Server closed");
+      process.exit(0);
+    });
+  });
+
+  return server;
 }
 
+// Start server
 startServer().catch((err) => {
-  logger.error("Failed to start server", err instanceof Error ? err : new Error(String(err)));
+  logger.error("Failed to start server", err);
   process.exit(1);
 });

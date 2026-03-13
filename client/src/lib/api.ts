@@ -171,7 +171,10 @@ export const apiClient = new ApiClient();
  * @param timestamp - Optional timestamp (default: current time)
  * @returns Filename in format: cough_YYYYMMDD_HHMMSS.webm
  */
-export function getAudioFileName(timestamp: Date = new Date()): string {
+export function getAudioFileName(
+  mimeType: string = "audio/webm",
+  timestamp: Date = new Date()
+): string {
   const year = timestamp.getFullYear();
   const month = String(timestamp.getMonth() + 1).padStart(2, "0");
   const date = String(timestamp.getDate()).padStart(2, "0");
@@ -179,7 +182,18 @@ export function getAudioFileName(timestamp: Date = new Date()): string {
   const minutes = String(timestamp.getMinutes()).padStart(2, "0");
   const seconds = String(timestamp.getSeconds()).padStart(2, "0");
 
-  return `cough_${year}${month}${date}_${hours}${minutes}${seconds}.webm`;
+  let extension = "webm";
+  if (mimeType.includes("mp4") || mimeType.includes("mpeg")) {
+    extension = "mp4";
+  } else if (mimeType.includes("wav")) {
+    extension = "wav";
+  } else if (mimeType.includes("ogg")) {
+    extension = "ogg";
+  } else if (mimeType.includes("flac")) {
+    extension = "flac";
+  }
+
+  return `cough_${year}${month}${date}_${hours}${minutes}${seconds}.${extension}`;
 }
 
 /**

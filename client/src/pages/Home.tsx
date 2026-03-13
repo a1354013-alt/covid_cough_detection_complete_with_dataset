@@ -65,7 +65,7 @@ export default function Home() {
         mediaRecorderRef.current.stop();
       }
       // Clean up audio element
-      if (audioElementRef.current?.src) {
+      if (audioElementRef.current?.src && audioElementRef.current.src.startsWith("blob:")) {
         URL.revokeObjectURL(audioElementRef.current.src);
       }
     };
@@ -224,7 +224,7 @@ export default function Home() {
       setUploadProgress(0);
 
       // Upload and get prediction with progress tracking
-      const filename = getAudioFileName(recordingData.timestamp);
+      const filename = getAudioFileName(recordingData.blob.type);
       const result = await apiClient.predict(
         recordingData.blob,
         filename,
@@ -265,6 +265,11 @@ export default function Home() {
 
   const playRecording = () => {
     if (!recordingData || !audioElementRef.current) return;
+
+    // Revoke old URL if it exists
+    if (audioElementRef.current.src && audioElementRef.current.src.startsWith("blob:")) {
+      URL.revokeObjectURL(audioElementRef.current.src);
+    }
 
     const url = URL.createObjectURL(recordingData.blob);
     audioElementRef.current.src = url;

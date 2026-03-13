@@ -77,7 +77,8 @@ class ModelInference:
         """
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.model = None
-        self.model_version = "stub-0.1"
+        self.model_version = "stub-0.1 (demo mode)"
+        self.is_stub_model = True
 
         if model_path and Path(model_path).exists():
             self.load_model(model_path)
@@ -90,7 +91,8 @@ class ModelInference:
         self.model = SimpleConvNet(input_channels=1, num_classes=2)
         self.model.to(self.device)
         self.model.eval()
-        logger.info("Created stub CNN model")
+        self.is_stub_model = True
+        logger.info("Created stub CNN model (demo mode - random predictions)")
 
     def load_model(self, model_path: str) -> None:
         """
@@ -114,6 +116,8 @@ class ModelInference:
             self.model.load_state_dict(state_dict)
             self.model.to(self.device)
             self.model.eval()
+            self.is_stub_model = False
+            self.model_version = "trained-1.0"
 
             logger.info(f"Loaded model from {model_path}")
 
@@ -162,7 +166,10 @@ class ModelInference:
 
             label = "positive" if pred_class == 1 else "negative"
 
-            logger.info(f"Prediction: {label} (confidence: {confidence:.2%})")
+            if self.is_stub_model:
+                logger.info(f"Stub prediction: {label} (random - demo mode)")
+            else:
+                logger.info(f"Prediction: {label} (confidence: {confidence:.2%})")
 
             return label, float(confidence)
 

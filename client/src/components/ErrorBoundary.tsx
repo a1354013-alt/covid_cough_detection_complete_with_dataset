@@ -1,6 +1,6 @@
 import { cn } from "@/lib/utils";
 import { AlertTriangle, RotateCcw } from "lucide-react";
-import { Component, ReactNode } from "react";
+import { Component, ReactNode, ErrorInfo } from "react";
 
 interface Props {
   children: ReactNode;
@@ -21,9 +21,9 @@ class ErrorBoundary extends Component<Props, State> {
     return { hasError: true, error };
   }
 
-  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+  componentDidCatch(error: Error, errorInfo: ErrorInfo): void {
     // Log error details in development
-    if (process.env.NODE_ENV === "development") {
+    if (import.meta.env.DEV) {
       console.error("Error caught by boundary:", error);
       console.error("Error info:", errorInfo);
     }
@@ -31,7 +31,7 @@ class ErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.hasError) {
-      const isDevelopment = process.env.NODE_ENV === "development";
+      const isDevelopment = import.meta.env.DEV;
 
       return (
         <div className="flex items-center justify-center min-h-screen p-8 bg-background">
