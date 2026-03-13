@@ -223,24 +223,13 @@ MODEL_PATH=/path/to/model.pt
 
 ## 目前版本定位
 
-這個版本比較適合拿來展示以下能力：
-
 - 全端整合能力
 - 音訊 AI 應用雛形
 - React / TypeScript 前端互動
 - Node.js 與 Python 雙後端串接
 - 音訊上傳、驗證、推論、結果顯示流程
 
-若要作為更完整的作品集專案，下一步建議補強：
 
-- 實際訓練模型與可重現評估指標
-- 真實資料集來源與前處理說明
-- 模型效能指標（Accuracy / F1 / AUC）
-- 推論結果可解釋性
-- 測試案例與 CI/CD
-- 更完整的部署文件
-
----
 
 ## 已知限制
 
@@ -271,4 +260,4 @@ MODEL_PATH=/path/to/model.pt
 
 ## License
 
-建議使用 MIT License。
+MIT License。
