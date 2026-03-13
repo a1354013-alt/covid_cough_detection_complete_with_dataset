@@ -102,6 +102,10 @@ class ModelInference:
         """
         Load model from file.
 
+        Supports both:
+        - state_dict: torch.save(model.state_dict(), path)
+        - full model: torch.save(model, path)
+
         Args:
             model_path: Path to saved model
 
@@ -114,20 +118,36 @@ class ModelInference:
             if not path.exists():
                 raise FileNotFoundError(f"Model file not found: {model_path}")
 
-            # Load model state dict
-            self.model = SimpleConvNet(input_channels=1, num_classes=2)
-            state_dict = torch.load(model_path, map_location=self.device)
-            self.model.load_state_dict(state_dict)
+            loaded = torch.load(model_path, map_location=self.device)
+
+            # Check if it's a state_dict (dict) or full model
+            if isinstance(loaded, dict):
+                # It's a state_dict
+                logger.info("Loading model from state_dict")
+                self.model = SimpleConvNet(input_channels=1, num_classes=2)
+                self.model.load_state_dict(loaded)
+            else:
+                # It's a full model
+                logger.info("Loading full model")
+                self.model = loaded
+
             self.model.to(self.device)
             self.model.eval()
             self.is_stub_model = False
             self.model_version = "trained-1.0"
 
-            logger.info(f"Loaded model from {model_path}")
+            logger.info(f"Successfully loaded model from {model_path}")
 
+        except FileNotFoundError:
+            logger.error(f"Model file not found: {model_path}. Using stub model.")
+            self._create_stub_model()
         except Exception as e:
-            logger.error(f"Failed to load model: {str(e)}")
-            raise
+            logger.error(
+                f"Failed to load model: {str(e)}. "
+                f"Ensure the file is a valid PyTorch model or state_dict. "
+                f"Using stub model instead."
+            )
+            self._create_stub_model()
 
     def predict(self, features: np.ndarray) -> Tuple[str, float]:
         """

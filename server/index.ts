@@ -2,6 +2,8 @@ import express, { Request, Response, NextFunction } from "express";
 import { createServer } from "http";
 import path from "path";
 import { fileURLToPath } from "url";
+import Busboy from "busboy";
+import type { FileInfo } from "busboy";
 import { validateAudioFile } from "./audio-validator";
 import { logger } from "./logger";
 
@@ -40,7 +42,11 @@ const PYTHON_API_URL = process.env.PYTHON_API_URL || "http://localhost:8000";
 const REQUEST_TIMEOUT = parseInt(process.env.REQUEST_TIMEOUT || "60000", 10);
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
 const RATE_LIMIT_WINDOW = 60000; // 1 minute
-const RATE_LIMIT_MAX_REQUESTS = 30;
+// Read from environment variable with safe fallback
+const RATE_LIMIT_MAX_REQUESTS = Math.max(
+  1,
+  parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || "30", 10)
+);
 const RATE_LIMIT_CLEANUP_INTERVAL = 5 * 60 * 1000; // 5 minutes
 
 logger.info("Configuration", {
@@ -121,7 +127,8 @@ setInterval(cleanupRateLimitMap, RATE_LIMIT_CLEANUP_INTERVAL);
 // ============================================================================
 
 /**
- * Multipart form-data parser with size limit and proper binary handling
+ * Multipart form-data parser using busboy for streaming
+ * Handles boundary issues and prevents loading entire file into memory
  */
 async function parseMultipart(req: Request): Promise<ParseMultipartResult> {
   return new Promise((resolve) => {
@@ -132,22 +139,12 @@ async function parseMultipart(req: Request): Promise<ParseMultipartResult> {
       return;
     }
 
-    const boundaryMatch = contentType.match(/boundary=([^;]+)/);
-    if (!boundaryMatch) {
-      resolve({ error: "Invalid multipart boundary" });
-      return;
-    }
-
-    const boundary = boundaryMatch[1];
-    const chunks: Buffer[] = [];
-    let totalSize = 0;
     let resolved = false;
-    let timedOut = false;
+    let totalSize = 0;
 
     // Timeout protection
     const timeoutHandle = setTimeout(() => {
       if (!resolved) {
-        timedOut = true;
         resolved = true;
         req.destroy();
         resolve({
@@ -157,104 +154,94 @@ async function parseMultipart(req: Request): Promise<ParseMultipartResult> {
       }
     }, REQUEST_TIMEOUT);
 
-    req.on("data", (chunk: Buffer) => {
-      // Check size limit before adding chunk
-      totalSize += chunk.length;
-      if (totalSize > MAX_FILE_SIZE) {
+    try {
+      const bb = Busboy({ headers: req.headers });
+
+      bb.on("file", (fieldname: string, file: any, info: FileInfo) => {
+        if (fieldname !== "audio" && fieldname !== "file") {
+          file.resume();
+          return;
+        }
+
+        const chunks: Buffer[] = [];
+        let fileSize = 0;
+
+        file.on("data", (chunk: Buffer) => {
+          fileSize += chunk.length;
+          totalSize += chunk.length;
+
+          // Check size limits
+          if (totalSize > MAX_FILE_SIZE) {
+            file.destroy();
+            bb.destroy();
+            clearTimeout(timeoutHandle);
+            if (!resolved) {
+              resolved = true;
+              resolve({
+                error: "File too large",
+                details: `Maximum file size is ${MAX_FILE_SIZE / 1024 / 1024}MB`,
+              });
+            }
+            return;
+          }
+
+          chunks.push(chunk);
+        });
+
+        file.on("end", () => {
+          const fileContent = Buffer.concat(chunks);
+          const { filename } = info;
+          const mimeType = info.mimeType || "audio/wav";
+
+          clearTimeout(timeoutHandle);
+          if (!resolved) {
+            resolved = true;
+            resolve({ file: fileContent, filename, mimeType });
+          }
+        });
+
+        file.on("error", (err: Error) => {
+          clearTimeout(timeoutHandle);
+          if (!resolved) {
+            resolved = true;
+            resolve({
+              error: "File upload error",
+              details: err.message,
+            });
+          }
+        });
+      });
+
+      bb.on("error", (err: Error) => {
         clearTimeout(timeoutHandle);
         if (!resolved) {
           resolved = true;
-          req.destroy();
           resolve({
-            error: "File too large",
-            details: `Maximum file size is ${MAX_FILE_SIZE / 1024 / 1024}MB`,
+            error: "Failed to parse multipart data",
+            details: err.message,
           });
         }
-        return;
-      }
+      });
 
-      chunks.push(chunk);
-    });
+      bb.on("close", () => {
+        if (!resolved) {
+          clearTimeout(timeoutHandle);
+          resolved = true;
+          resolve({ error: "No audio file found in request" });
+        }
+      });
 
-    req.on("end", () => {
+      req.pipe(bb);
+    } catch (err) {
       clearTimeout(timeoutHandle);
-      if (resolved || timedOut) return;
-      resolved = true;
-
-      try {
-        const body = Buffer.concat(chunks);
-
-        // Extract boundary and parts more carefully
-        const boundaryBuffer = Buffer.from(`--${boundary}`);
-        const parts: Buffer[] = [];
-        let currentPos = 0;
-
-        // Find all boundary positions
-        while (currentPos < body.length) {
-          const boundaryPos = body.indexOf(boundaryBuffer, currentPos);
-          if (boundaryPos === -1) break;
-
-          if (currentPos > 0) {
-            parts.push(body.slice(currentPos, boundaryPos));
-          }
-          currentPos = boundaryPos + boundaryBuffer.length;
-        }
-
-        // Add final part
-        if (currentPos < body.length) {
-          parts.push(body.slice(currentPos));
-        }
-
-        // Find audio file part
-        for (const part of parts) {
-          const partStr = part.toString("binary", 0, Math.min(500, part.length));
-
-          if (partStr.includes('name="audio"') || partStr.includes('name="file"')) {
-            // Extract filename
-            const filenameMatch = partStr.match(/filename="([^"]+)"/);
-            const filename = filenameMatch ? filenameMatch[1] : "audio.wav";
-
-            // Extract MIME type
-            const mimeMatch = partStr.match(/Content-Type:\s*([^\r\n]+)/i);
-            const mimeType = mimeMatch ? mimeMatch[1].trim() : "audio/wav";
-
-            // Find header/body separator
-            const headerEndIndex = part.indexOf(Buffer.from("\r\n\r\n"));
-            if (headerEndIndex !== -1) {
-              const fileStart = headerEndIndex + 4;
-              // Find trailing boundary or CRLF
-              let fileEnd = part.length;
-              const trailingCRLF = part.lastIndexOf(Buffer.from("\r\n"));
-              if (trailingCRLF > fileStart) {
-                fileEnd = trailingCRLF;
-              }
-
-              const fileContent = part.slice(fileStart, fileEnd);
-
-              resolve({ file: fileContent, filename, mimeType });
-              return;
-            }
-          }
-        }
-
-        resolve({ error: "No audio file found in request" });
-      } catch (err) {
+      if (!resolved) {
+        resolved = true;
         resolve({
           error: "Failed to parse multipart data",
           details: err instanceof Error ? err.message : String(err),
         });
       }
-    });
-
-    req.on("error", (err) => {
-      clearTimeout(timeoutHandle);
-      if (resolved) return;
-      resolved = true;
-      resolve({
-        error: "Request error",
-        details: err.message,
-      });
-    });
+    }
   });
 }
 
@@ -271,7 +258,7 @@ async function startServer() {
   app.use(express.urlencoded({ extended: true }));
 
   // Security Headers Middleware
-  app.use((_req: Request, res: Response, next: NextFunction) => {
+  app.use((req: Request, res: Response, next: NextFunction) => {
     // CORS headers
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -284,7 +271,11 @@ async function startServer() {
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "DENY");
     res.setHeader("X-XSS-Protection", "1; mode=block");
-    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+    // Only set HSTS in production with HTTPS (or when behind HTTPS proxy)
+    const isSecure = !isDev && (req.protocol === "https" || req.get("x-forwarded-proto") === "https");
+    if (isSecure) {
+      res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+    }
 
     // Build CSP with support for Python backend (supports http/https and ws/wss)
     const pythonUrl = new URL(PYTHON_API_URL);
@@ -525,7 +516,7 @@ async function startServer() {
         const pythonVersion = await pythonVersionResponse.json();
         res.json({
           api_version: "1.0.0",
-          model_version: pythonVersion.model_version || "stub-0.1 (demo mode)",
+          model_version: (pythonVersion as Record<string, unknown>).model_version || "stub-0.1 (demo mode)",
           python_backend: "connected",
           timestamp: new Date().toISOString(),
         });

@@ -89,6 +89,17 @@ class ApiClient {
           );
         }, this.REQUEST_TIMEOUT);
 
+        // Also set xhr.timeout for browser-level timeout handling
+        xhr.timeout = this.REQUEST_TIMEOUT;
+        xhr.ontimeout = () => {
+          if (timeoutId) clearTimeout(timeoutId);
+          reject(
+            new Error(
+              "Request timeout (120s). The server took too long to respond. Please try again."
+            )
+          );
+        };
+
         xhr.addEventListener("load", () => {
           if (timeoutId) clearTimeout(timeoutId);
 

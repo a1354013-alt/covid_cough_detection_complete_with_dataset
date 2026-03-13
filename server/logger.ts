@@ -47,7 +47,7 @@ class Logger {
 
     if (error) {
       output += ` | Error: ${error.name}: ${error.message}`;
-      if (import.meta.env.DEV && error.stack) {
+      if (process.env.NODE_ENV !== "production" && error.stack) {
         output += `\n${error.stack}`;
       }
     }
@@ -152,7 +152,7 @@ class Logger {
 
 // Export singleton instance
 export const logger = new Logger(
-  import.meta.env.DEV ? LogLevel.DEBUG : LogLevel.INFO
+  process.env.NODE_ENV !== "production" ? LogLevel.DEBUG : LogLevel.INFO
 );
 
 export default logger;

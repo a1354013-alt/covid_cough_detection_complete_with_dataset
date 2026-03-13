@@ -43,7 +43,7 @@ export default function Home() {
   // Refs
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
 
   // Constants

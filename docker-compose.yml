@@ -52,7 +52,3 @@ services:
 networks:
   covid-network:
     driver: bridge
-
-volumes:
-  node-data:
-  python-data:
