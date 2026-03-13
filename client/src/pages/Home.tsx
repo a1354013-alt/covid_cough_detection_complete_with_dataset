@@ -246,11 +246,13 @@ export default function Home() {
         message = err.message;
       }
 
-      // Provide helpful error messages
-      if (message.includes("Network")) {
+      // Provide helpful error messages based on error type
+      if (message.includes("timeout")) {
+        message = "Request timed out (120s). The server took too long to respond. Please try again.";
+      } else if (message.includes("Network")) {
         message = "Network error. Please check your connection and try again.";
-      } else if (message.includes("timeout")) {
-        message = "Request timed out. Please try again.";
+      } else if (message.includes("aborted")) {
+        message = "Request was cancelled. Please try again.";
       }
 
       setError(message);

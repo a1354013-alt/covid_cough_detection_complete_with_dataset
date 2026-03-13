@@ -286,9 +286,13 @@ async function startServer() {
     res.setHeader("X-XSS-Protection", "1; mode=block");
     res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
 
-    // Build CSP with support for Python backend (same-origin or configurable)
-    const pythonHost = new URL(PYTHON_API_URL).host;
-    const connectSrc = `'self' http://${pythonHost} ws://${pythonHost}`;
+    // Build CSP with support for Python backend (supports http/https and ws/wss)
+    const pythonUrl = new URL(PYTHON_API_URL);
+    const pythonHost = pythonUrl.host;
+    const isHttps = pythonUrl.protocol === "https:";
+    const httpProtocol = isHttps ? "https" : "http";
+    const wsProtocol = isHttps ? "wss" : "ws";
+    const connectSrc = `'self' ${httpProtocol}://${pythonHost} ${wsProtocol}://${pythonHost}`;
     
     res.setHeader(
       "Content-Security-Policy",

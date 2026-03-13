@@ -75,12 +75,14 @@ app = FastAPI(
 )
 
 # Add CORS middleware
+# Note: allow_origins=["*"] with allow_credentials=True is not valid per CORS spec
+# Using allow_credentials=False with wildcard origins for maximum compatibility
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, specify allowed origins
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["*"],  # Allow all origins (credentials not needed for same-origin proxy)
+    allow_credentials=False,  # Credentials handled at proxy level (server/index.ts)
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 # ============================================================================

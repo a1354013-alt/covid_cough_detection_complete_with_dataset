@@ -39,6 +39,7 @@ export interface VersionResponse {
 
 class ApiClient {
   private baseUrl: string;
+  private readonly REQUEST_TIMEOUT = 120000; // 120 seconds
 
   constructor(baseUrl: string = "/api") {
     this.baseUrl = baseUrl;
@@ -51,7 +52,7 @@ class ApiClient {
    * @param filename - Filename for the audio file
    * @param onProgress - Optional progress callback (0-100)
    * @returns Prediction result
-   * @throws Error if prediction fails
+   * @throws Error if prediction fails or times out
    */
   async predict(
     audioBlob: Blob,
@@ -62,8 +63,9 @@ class ApiClient {
     formData.append("audio", audioBlob, filename);
 
     try {
-      // Use XMLHttpRequest for progress tracking
+      // Use XMLHttpRequest for progress tracking and timeout
       const xhr = new XMLHttpRequest();
+      let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
       // Track upload progress
       if (onProgress) {
@@ -77,37 +79,58 @@ class ApiClient {
 
       // Wrap in Promise for async/await usage
       return new Promise((resolve, reject) => {
+        // Set timeout to prevent hanging requests
+        timeoutId = setTimeout(() => {
+          xhr.abort();
+          reject(
+            new Error(
+              "Request timeout (120s). The server took too long to respond. Please try again."
+            )
+          );
+        }, this.REQUEST_TIMEOUT);
+
         xhr.addEventListener("load", () => {
+          if (timeoutId) clearTimeout(timeoutId);
+
           if (xhr.status === 200) {
             try {
               const response = JSON.parse(xhr.responseText) as PredictionResponse;
               resolve(response);
             } catch (err) {
-              reject(new Error("Invalid response format"));
+              reject(new Error("Invalid response format from server"));
             }
           } else {
             try {
               const errorData = JSON.parse(xhr.responseText) as ApiError;
-              reject(new Error(errorData.error || `HTTP ${xhr.status}`));
+              reject(
+                new Error(errorData.error || `Server error: HTTP ${xhr.status}`)
+              );
             } catch {
-              reject(new Error(`HTTP ${xhr.status}`));
+              reject(new Error(`Server error: HTTP ${xhr.status}`));
             }
           }
         });
 
         xhr.addEventListener("error", () => {
-          reject(new Error("Network error"));
+          if (timeoutId) clearTimeout(timeoutId);
+          reject(
+            new Error(
+              "Network error. Please check your connection and try again."
+            )
+          );
         });
 
         xhr.addEventListener("abort", () => {
-          reject(new Error("Request aborted"));
+          if (timeoutId) clearTimeout(timeoutId);
+          reject(new Error("Request was aborted"));
         });
 
         xhr.open("POST", `${this.baseUrl}/predict`);
         xhr.send(formData);
       });
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to get prediction";
+      const message =
+        err instanceof Error ? err.message : "Failed to get prediction";
       throw new Error(message);
     }
   }
@@ -168,8 +191,9 @@ export const apiClient = new ApiClient();
 /**
  * Generate audio filename with timestamp
  * 
+ * @param mimeType - Audio MIME type (determines extension)
  * @param timestamp - Optional timestamp (default: current time)
- * @returns Filename in format: cough_YYYYMMDD_HHMMSS.webm
+ * @returns Filename in format: cough_YYYYMMDD_HHMMSS.ext
  */
 export function getAudioFileName(
   mimeType: string = "audio/webm",
