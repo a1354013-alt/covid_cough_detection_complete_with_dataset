@@ -69,12 +69,9 @@ interface RateLimitEntry {
 const rateLimitMap = new Map<string, RateLimitEntry>();
 
 function getRateLimitKey(req: Request): string {
-  // Use IP address or forwarded IP
-  return (
-    (req.headers["x-forwarded-for"] as string)?.split(",")[0] ||
-    req.socket.remoteAddress ||
-    "unknown"
-  );
+  // Use Express's req.ip which respects trust proxy setting
+  // Falls back to socket address if not available
+  return req.ip || req.socket.remoteAddress || "unknown";
 }
 
 function checkRateLimit(req: Request): boolean {
@@ -129,7 +126,9 @@ setInterval(cleanupRateLimitMap, RATE_LIMIT_CLEANUP_INTERVAL);
 /**
  * Parse multipart form data using Busboy
  * Streams multipart parsing with size limit enforcement.
- * Note: Currently buffers file content in memory (up to 10MB limit).
+ * - Only accepts the first audio/file field (subsequent files are ignored)
+ * - Enforces 10MB size limit per file
+ * - Currently buffers file content in memory
  * Future optimization: Stream directly to Python backend or temp file.
  */
 async function parseMultipart(req: Request): Promise<ParseMultipartResult> {
@@ -142,7 +141,8 @@ async function parseMultipart(req: Request): Promise<ParseMultipartResult> {
     }
 
     let resolved = false;
-    let fileBytes = 0;
+    let totalBytes = 0; // Track total bytes received (for safety)
+    let fileReceived = false; // Track if we already received a file
 
     // Timeout protection
     const timeoutHandle = setTimeout(() => {
@@ -165,15 +165,20 @@ async function parseMultipart(req: Request): Promise<ParseMultipartResult> {
           return;
         }
 
+        // Only accept the first audio file, ignore subsequent ones
+        if (fileReceived) {
+          file.resume();
+          return;
+        }
+
         const chunks: Buffer[] = [];
         let fileSize = 0;
 
         file.on("data", (chunk: Buffer) => {
           fileSize += chunk.length;
-          fileBytes += chunk.length;
 
-          // Check size limits
-          if (fileBytes > MAX_FILE_SIZE) {
+          // Check size limits (per file, not cumulative)
+          if (fileSize > MAX_FILE_SIZE) {
             file.destroy();
             bb.destroy();
             clearTimeout(timeoutHandle);
@@ -188,6 +193,7 @@ async function parseMultipart(req: Request): Promise<ParseMultipartResult> {
           }
 
           chunks.push(chunk);
+          totalBytes += chunk.length; // Track total for safety
         });
 
         file.on("end", () => {
@@ -195,6 +201,7 @@ async function parseMultipart(req: Request): Promise<ParseMultipartResult> {
           const { filename } = info;
           const mimeType = info.mimeType || "audio/wav";
 
+          fileReceived = true;
           clearTimeout(timeoutHandle);
           if (!resolved) {
             resolved = true;
@@ -231,11 +238,17 @@ async function parseMultipart(req: Request): Promise<ParseMultipartResult> {
         if (!resolved) {
           clearTimeout(timeoutHandle);
           resolved = true;
-          resolve({ error: "No audio file found in request", details: "Ensure audio or file field is present" });
+          if (fileReceived) {
+            // File was received but not properly resolved (shouldn't happen)
+            resolve({ error: "File processing error", details: "Failed to finalize file" });
+          } else {
+            resolve({ error: "No audio file found in request", details: "Ensure audio or file field is present" });
+          }
         }
       });
 
       // Pipe request to busboy parser
+      // Note: If multiple files are sent, only the first one is processed
       req.pipe(bb);
     } catch (err) {
       clearTimeout(timeoutHandle);
@@ -260,6 +273,13 @@ async function startServer() {
   const app = express();
   const server = createServer(app);
 
+  // Trust proxy - set based on environment
+  // In production behind a proxy, set to 1 (or number of proxy hops)
+  // Can be configured via TRUST_PROXY env var
+  const trustProxy = process.env.TRUST_PROXY || (isDev ? false : 1);
+  app.set("trust proxy", trustProxy);
+  logger.info("Trust proxy setting", { trust_proxy: trustProxy });
+
   // Middleware
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
@@ -279,7 +299,8 @@ async function startServer() {
     res.setHeader("X-Frame-Options", "DENY");
     res.setHeader("X-XSS-Protection", "1; mode=block");
     // Only set HSTS in production with HTTPS (or when behind HTTPS proxy)
-    const isSecure = !isDev && (req.protocol === "https" || req.get("x-forwarded-proto") === "https");
+    // req.protocol respects trust proxy setting
+    const isSecure = !isDev && req.protocol === "https";
     if (isSecure) {
       res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
     }
@@ -365,6 +386,7 @@ async function startServer() {
         logger.warn("Multipart parse error", { error: parseError });
         res.status(400).json({
           error: parseError,
+          details: isDev ? "Check server logs for details" : undefined,
         } as ErrorResponse);
         return;
       }
@@ -373,6 +395,7 @@ async function startServer() {
         logger.warn("No audio file provided");
         res.status(400).json({
           error: "No audio file provided",
+          details: isDev ? "Ensure audio or file field is present in the request" : undefined,
         } as ErrorResponse);
         return;
       }
@@ -383,10 +406,12 @@ async function startServer() {
       if (!validation.valid) {
         logger.warn("Audio validation failed", {
           error: validation.error,
+          details: validation.details,
           filename,
         });
         res.status(400).json({
           error: validation.error,
+          details: isDev ? validation.details : undefined,
         } as ErrorResponse);
         return;
       }
