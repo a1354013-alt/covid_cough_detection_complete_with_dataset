@@ -5,7 +5,7 @@
  * - Magic bytes (file signature)
  * - File size
  * - Audio format
- * - Basic audio metadata (when possible)
+ * - Extension matches detected format
  */
 
 // Audio format magic bytes (file signatures)
@@ -27,6 +27,15 @@ const AUDIO_MAGIC_BYTES: Record<string, Uint8Array> = {
   webm: new Uint8Array([0x1a, 0x45, 0xdf, 0xa3]),
 };
 
+// Map detected format to allowed file extensions
+const FORMAT_TO_EXTENSIONS: Record<string, string[]> = {
+  wav: ["wav"],
+  mp3: ["mp3"],
+  m4a: ["m4a", "mp4"],
+  ogg: ["ogg"],
+  webm: ["webm"],
+};
+
 interface AudioValidationResult {
   valid: boolean;
   format?: string;
@@ -34,6 +43,7 @@ interface AudioValidationResult {
   details?: {
     fileSize: number;
     detectedFormat?: string;
+    providedExtension?: string;
   };
 }
 
@@ -71,7 +81,9 @@ export function detectAudioFormat(buffer: Buffer): string | null {
     return "mp3";
   }
 
-  // Check M4A
+  // Check M4A/MP4 (ftyp at offset 4)
+  // Note: This detects MP4 family containers, which could be audio or video
+  // Common audio brands: isom, iso2, mp42, M4A, M4B
   if (buffer.length >= 8) {
     if (bufferStartsWith(buffer.slice(4), AUDIO_MAGIC_BYTES.m4a)) {
       return "m4a";
@@ -132,16 +144,27 @@ export function validateAudioFile(
     };
   }
 
-  // If filename provided, verify extension matches detected format
+  // If filename provided, verify extension is supported and matches detected format
   if (filename) {
     const ext = filename.toLowerCase().split(".").pop();
-    const supportedExtensions = ["wav", "mp3", "m4a", "ogg", "webm"];
+    const supportedExtensions = ["wav", "mp3", "m4a", "mp4", "ogg", "webm"];
 
+    // Check if extension is in supported list
     if (!supportedExtensions.includes(ext || "")) {
       return {
         valid: false,
         error: `Invalid file extension. Supported formats: ${supportedExtensions.join(", ")}`,
-        details: { fileSize: buffer.length, detectedFormat },
+        details: { fileSize: buffer.length, detectedFormat, providedExtension: ext },
+      };
+    }
+
+    // Check if extension matches detected format
+    const allowedExts = FORMAT_TO_EXTENSIONS[detectedFormat] || [];
+    if (ext && !allowedExts.includes(ext)) {
+      return {
+        valid: false,
+        error: `File extension '.${ext}' does not match detected format '${detectedFormat}'. Expected: ${allowedExts.join(", ")}`,
+        details: { fileSize: buffer.length, detectedFormat, providedExtension: ext },
       };
     }
   }
@@ -158,7 +181,7 @@ export function validateAudioFile(
  */
 export function getFormatFromFilename(filename: string): string | null {
   const ext = filename.toLowerCase().split(".").pop();
-  if (ext && ["wav", "mp3", "m4a", "ogg", "webm"].includes(ext)) {
+  if (ext && ["wav", "mp3", "m4a", "mp4", "ogg", "webm"].includes(ext)) {
     return ext;
   }
   return null;

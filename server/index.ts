@@ -35,6 +35,7 @@ interface ParseMultipartResult {
 // Configuration
 // ============================================================================
 
+const isDev = process.env.NODE_ENV !== "production";
 const PYTHON_API_URL = process.env.PYTHON_API_URL || "http://localhost:8000";
 const REQUEST_TIMEOUT = parseInt(process.env.REQUEST_TIMEOUT || "60000", 10);
 const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -285,7 +286,10 @@ async function startServer() {
     res.setHeader("X-XSS-Protection", "1; mode=block");
     res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
 
-    // Improved CSP with blob and media support
+    // Build CSP with support for Python backend (same-origin or configurable)
+    const pythonHost = new URL(PYTHON_API_URL).host;
+    const connectSrc = `'self' http://${pythonHost} ws://${pythonHost}`;
+    
     res.setHeader(
       "Content-Security-Policy",
       "default-src 'self'; " +
@@ -293,7 +297,7 @@ async function startServer() {
         "media-src 'self' blob:; " +
         "style-src 'self' 'unsafe-inline'; " +
         "script-src 'self'; " +
-        "connect-src 'self' http://localhost:* ws://localhost:*"
+        `connect-src ${connectSrc}`
     );
 
     next();
@@ -417,7 +421,7 @@ async function startServer() {
       res.status(500).json({
         error: "Internal server error",
         details:
-          import.meta.env.DEV && err instanceof Error ? err.message : undefined,
+          isDev && err instanceof Error ? err.message : undefined,
       } as ErrorResponse);
     }
   });
@@ -555,7 +559,7 @@ async function startServer() {
     logger.error("Unhandled error", err);
     res.status(500).json({
       error: "Internal server error",
-      details: import.meta.env.DEV ? err.message : undefined,
+      details: isDev ? err.message : undefined,
     } as ErrorResponse);
   });
 
@@ -568,7 +572,7 @@ async function startServer() {
   server.listen(port, () => {
     logger.info("Server started", {
       port,
-      environment: import.meta.env.DEV ? "development" : "production",
+      environment: isDev ? "development" : "production",
       python_api_url: PYTHON_API_URL,
     });
   });
