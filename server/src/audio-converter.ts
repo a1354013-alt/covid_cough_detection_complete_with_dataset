@@ -29,10 +29,28 @@ export function isWavFormat(mimeType: string): boolean {
 
 /**
  * Get target MIME type for backend processing
- * Always returns WAV as the standard format
+ * 
+ * Returns the actual format that will be sent to Python:
+ * - If source is WAV: returns audio/wav
+ * - If source is not WAV but conversion succeeded: returns audio/wav
+ * - If source is not WAV and conversion would fail: returns original MIME type
+ * 
+ * This ensures Content-Type header matches actual audio format.
  */
-export function getTargetMimeType(): string {
-  return "audio/wav";
+export function getTargetMimeType(sourceMimeType: string, conversionSucceeded: boolean = true): string {
+  // If source is already WAV, target is WAV
+  if (isWavFormat(sourceMimeType)) {
+    return "audio/wav";
+  }
+  
+  // If conversion succeeded, target is WAV
+  if (conversionSucceeded) {
+    return "audio/wav";
+  }
+  
+  // If conversion failed or not attempted, keep original MIME type
+  // This prevents lying about format in Content-Type header
+  return sourceMimeType;
 }
 
 /**

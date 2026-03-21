@@ -217,7 +217,7 @@ export default function Home() {
       // ✅ 分段式進度顯示
       // 先顯示上傳進度
       setUploadProgress(0);
-      const result = await apiClient.uploadAudio(recordingData.blob, filename, (progress) => {
+      const result = await apiClient.predict(recordingData.blob, filename, (progress) => {
         // 上傳進度：0-50%
         setUploadProgress(Math.round(progress * 50));
       });
@@ -366,18 +366,18 @@ export default function Home() {
                 <div className="space-y-3">
                   <div>
                     <div className="text-sm text-gray-600">Prediction</div>
-                    <div className={`text-2xl font-bold ${prediction.label === "positive" ? "text-red-600" : "text-green-600"}`}>
-                      {prediction.label === "positive" ? "COVID-19 Positive" : "COVID-19 Negative"}
+                    <div className={`text-2xl font-bold ${prediction.rawLabel === "positive" ? "text-red-600" : "text-green-600"}`}>
+                      {prediction.rawLabel === "positive" ? "COVID-19 Positive" : "COVID-19 Negative"}
                     </div>
                   </div>
 
                   <div>
                     <div className="text-sm text-gray-600">Confidence</div>
-                    <div className="text-xl font-semibold text-gray-900">{prediction.confidence}%</div>
+                    <div className="text-xl font-semibold text-gray-900">{prediction.confidenceText}</div>
                     <div className="w-full bg-gray-200 rounded-full h-2 mt-1">
                       <div
-                        className={`h-2 rounded-full transition-all ${prediction.confidence > 70 ? "bg-red-600" : "bg-green-600"}`}
-                        style={{ width: `${prediction.confidence}%` }}
+                        className={`h-2 rounded-full transition-all ${prediction.confidenceValue > 70 ? "bg-red-600" : "bg-green-600"}`}
+                        style={{ width: `${prediction.confidenceText}` }}
                       />
                     </div>
                   </div>

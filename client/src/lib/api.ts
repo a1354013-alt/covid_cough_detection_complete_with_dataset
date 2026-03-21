@@ -22,14 +22,22 @@ export interface ApiPredictionResponse {
 }
 
 /**
- * Formatted prediction result for UI display
+ * ✅ 改進的 UI Prediction 結果
+ * 分離 raw 數據和 display 文本，避免型別混亂
  */
 export interface UIPredictionResult {
-  label: string;
-  probability: string;
-  confidence: string;
+  // ✅ Raw 數據（用於邏輯判斷）
+  rawLabel: "positive" | "negative";
+  confidenceValue: number; // 0-100
+
+  // ✅ Display 文本（用於顯示）
+  displayLabel: string; // "Possible Positive Signal" 或 "Possible Negative Signal"
+  confidenceText: string; // "95%"
+
+  // ✅ 其他信息
   modelVersion: string;
-  timestamp: string;
+  timestamp: Date; // ✅ 改為 Date 物件，可安全格式化
+  processingTimeMs: number;
 }
 
 export interface ApiError {
@@ -44,7 +52,8 @@ export interface HealthResponse {
 
 export interface VersionResponse {
   api_version: string;
-  model_version: string;
+  model_version: string | null;
+  python_backend: string;
   timestamp: string;
 }
 
@@ -97,220 +106,171 @@ class ApiClient {
         // Set timeout to prevent hanging requests
         timeoutId = setTimeout(() => {
           xhr.abort();
-          reject(
-            new Error(
-              "Request timeout (120s). The server took too long to respond. Please try again."
-            )
-          );
+          reject(new Error(`Request timeout after ${this.REQUEST_TIMEOUT}ms`));
         }, this.REQUEST_TIMEOUT);
 
-        // Also set xhr.timeout for browser-level timeout handling
-        xhr.timeout = this.REQUEST_TIMEOUT;
-        xhr.ontimeout = () => {
-          if (timeoutId) clearTimeout(timeoutId);
-          reject(
-            new Error(
-              "Request timeout (120s). The server took too long to respond. Please try again."
-            )
-          );
-        };
-
-        xhr.addEventListener("load", () => {
+        xhr.onload = () => {
           if (timeoutId) clearTimeout(timeoutId);
 
           if (xhr.status === 200) {
             try {
-              const response = JSON.parse(xhr.responseText) as ApiPredictionResponse;
+              const response: ApiPredictionResponse = JSON.parse(xhr.responseText);
               resolve(response);
             } catch (err) {
               reject(new Error("Invalid response format from server"));
             }
           } else if (xhr.status === 503) {
-            // ✅ 處理 503 Service Unavailable
-            reject(
-              new Error(
-                "Model service is temporarily unavailable. Please try again later."
-              )
-            );
-          } else {
+            reject(new Error("Model service temporarily unavailable. Please try again later."));
+          } else if (xhr.status === 400) {
             try {
-              const errorData = JSON.parse(xhr.responseText) as ApiError;
-              reject(
-                new Error(errorData.error || `Server error: HTTP ${xhr.status}`)
-              );
+              const error: ApiError = JSON.parse(xhr.responseText);
+              reject(new Error(error.details || error.error || "Invalid audio format"));
             } catch {
-              reject(new Error(`Server error: HTTP ${xhr.status}`));
+              reject(new Error("Invalid audio format"));
             }
+          } else {
+            reject(new Error(`Server error: ${xhr.status} ${xhr.statusText}`));
           }
-        });
+        };
 
-        xhr.addEventListener("error", () => {
+        xhr.onerror = () => {
           if (timeoutId) clearTimeout(timeoutId);
-          reject(
-            new Error(
-              "Network error. Please check your connection and try again."
-            )
-          );
-        });
+          reject(new Error("Network error. Please check your connection."));
+        };
 
-        xhr.addEventListener("abort", () => {
+        xhr.onabort = () => {
           if (timeoutId) clearTimeout(timeoutId);
-          reject(new Error("Request was aborted"));
-        });
+          reject(new Error("Request cancelled"));
+        };
 
         xhr.open("POST", `${this.baseUrl}/predict`);
         xhr.send(formData);
       });
     } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Failed to get prediction";
-      throw new Error(message);
+      throw err instanceof Error ? err : new Error("Prediction failed");
     }
   }
 
   /**
-   * Check if API is healthy
-   * 
-   * @returns Health status
-   * @throws Error if health check fails
+   * Check API health status
    */
-  async health(): Promise<HealthResponse> {
+  async getHealth(): Promise<HealthResponse> {
     try {
-      const response = await fetch(`${this.baseUrl}/health`);
+      const response = await fetch(`${this.baseUrl}/healthz`, {
+        signal: AbortSignal.timeout(5000),
+      });
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+        throw new Error(`Health check failed: ${response.statusText}`);
       }
 
-      return (await response.json()) as HealthResponse;
+      return await response.json();
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Health check failed";
-      throw new Error(message);
+      throw err instanceof Error ? err : new Error("Health check failed");
     }
   }
 
   /**
-   * Get API and model version information
-   * 
-   * @returns Version information
-   * @throws Error if version check fails
+   * Check API readiness (model available)
    */
-  async version(): Promise<VersionResponse> {
+  async getReadiness(): Promise<HealthResponse> {
     try {
-      const response = await fetch(`${this.baseUrl}/version`);
+      const response = await fetch(`${this.baseUrl}/readyz`, {
+        signal: AbortSignal.timeout(5000),
+      });
 
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+      if (response.status === 503) {
+        throw new Error("Service not ready: Model unavailable");
       }
 
-      return (await response.json()) as VersionResponse;
+      if (!response.ok) {
+        throw new Error(`Readiness check failed: ${response.statusText}`);
+      }
+
+      return await response.json();
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to get version";
-      throw new Error(message);
+      throw err instanceof Error ? err : new Error("Readiness check failed");
+    }
+  }
+
+  /**
+   * Get version information
+   */
+  async getVersion(): Promise<VersionResponse> {
+    try {
+      const response = await fetch(`${this.baseUrl}/version`, {
+        signal: AbortSignal.timeout(5000),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Version check failed: ${response.statusText}`);
+      }
+
+      return await response.json();
+    } catch (err) {
+      throw err instanceof Error ? err : new Error("Version check failed");
     }
   }
 }
 
 // ============================================================================
-// Singleton Instance
-// ============================================================================
-
-export const apiClient = new ApiClient();
-
-// ============================================================================
-// Utility Functions
+// Helper Functions
 // ============================================================================
 
 /**
- * Generate audio filename with timestamp
- * 
- * @param mimeType - Audio MIME type (determines extension)
- * @param timestamp - Optional timestamp (default: current time)
- * @returns Filename in format: cough_YYYYMMDD_HHMMSS.ext
+ * ✅ 改進的 formatPrediction 函數
+ * 將 raw API 響應轉換為 UI 友好的格式
+ * 分離 raw 數據和 display 文本
  */
-export function getAudioFileName(
-  mimeType: string = "audio/webm",
-  timestamp: Date = new Date()
-): string {
-  const year = timestamp.getFullYear();
-  const month = String(timestamp.getMonth() + 1).padStart(2, "0");
-  const date = String(timestamp.getDate()).padStart(2, "0");
-  const hours = String(timestamp.getHours()).padStart(2, "0");
-  const minutes = String(timestamp.getMinutes()).padStart(2, "0");
-  const seconds = String(timestamp.getSeconds()).padStart(2, "0");
+export function formatPrediction(response: ApiPredictionResponse): UIPredictionResult {
+  // ✅ 計算 confidence（0-100）
+  const confidenceValue = Math.round(Math.max(response.prob, 1 - response.prob) * 100);
 
-  // ✅ 修正：MIME type 副檔名推導要明確拆開
-  // 避免 audio/mpeg 被誤判成 .mp4
-  let extension = "webm"; // 預設
+  // ✅ 生成 display 文本
+  const displayLabel = response.label === "positive" 
+    ? "Possible Positive Signal" 
+    : "Possible Negative Signal";
 
-  if (mimeType.includes("audio/mp4") || mimeType.includes("audio/mp4a")) {
-    extension = "mp4";
-  } else if (mimeType.includes("audio/mpeg") || mimeType.includes("audio/mp3")) {
-    // audio/mpeg 通常是 MP3，不是 MP4
-    extension = "mp3";
-  } else if (mimeType.includes("audio/wav")) {
-    extension = "wav";
-  } else if (mimeType.includes("audio/ogg")) {
-    extension = "ogg";
-  } else if (mimeType.includes("audio/opus")) {
-    extension = "opus";
-  } else if (mimeType.includes("audio/webm")) {
-    extension = "webm";
-  }
-  // 如果都不匹配，保留預設 webm
-
-  return `cough_${year}${month}${date}_${hours}${minutes}${seconds}.${extension}`;
-}
-
-/**
- * Format prediction result for display
- * 
- * ✅ 修正的 confidence 算法：
- * - prob 代表 positive 的機率
- * - confidence 應該是模型對預測的把握度
- * - 把握度最高時是 prob 最接近 0 或 1（即最遠離 0.5）
- * 
- * @param result - Raw API prediction response
- * @returns Formatted prediction for UI display
- */
-export function formatPrediction(result: ApiPredictionResponse): UIPredictionResult {
-  const isPositive = result.label === "positive";
-  const probability = Math.round(result.prob * 100);
-  
-  // ✅ 修正的 confidence 算法
-  // 使用 Math.max(prob, 1-prob) 計算把握度
-  // 這樣 prob=0.9 時 confidence=90%（高把握）
-  // prob=0.5 時 confidence=50%（低把握）
-  const confidence = Math.round(Math.max(result.prob, 1 - result.prob) * 100);
+  const confidenceText = `${confidenceValue}%`;
 
   return {
-    label: isPositive ? "COVID-19 Positive" : "COVID-19 Negative",
-    probability: `${probability}%`,
-    confidence: `${confidence}%`,
-    modelVersion: result.model_version,
-    timestamp: new Date().toLocaleString(),
+    // ✅ Raw 數據
+    rawLabel: response.label,
+    confidenceValue,
+
+    // ✅ Display 文本
+    displayLabel,
+    confidenceText,
+
+    // ✅ 其他信息
+    modelVersion: response.model_version,
+    timestamp: new Date(), // ✅ 改為 Date 物件
+    processingTimeMs: response.processing_time_ms,
   };
 }
 
 /**
- * Get medical advice based on prediction result
- * 
- * @param label - Prediction label
- * @returns Medical advice text
+ * Get audio filename based on MIME type
  */
-export function getMedicalAdvice(label: "positive" | "negative"): string {
-  if (label === "positive") {
-    return "This result suggests a possible COVID-19 infection. Please consult a healthcare professional for proper diagnosis and testing.";
-  } else {
-    return "This result suggests no COVID-19 infection detected. However, if you have symptoms, please consult a healthcare professional.";
+export function getAudioFileName(mimeType: string): string {
+  const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, -5);
+
+  if (mimeType.includes("audio/mpeg")) {
+    return `cough-${timestamp}.mp3`;
   }
+  if (mimeType.includes("audio/mp4")) {
+    return `cough-${timestamp}.mp4`;
+  }
+  if (mimeType.includes("audio/wav")) {
+    return `cough-${timestamp}.wav`;
+  }
+
+  // Default to WebM
+  return `cough-${timestamp}.webm`;
 }
 
-/**
- * Get medical disclaimer text
- * 
- * @returns Disclaimer message
- */
-export function getDisclaimer(): string {
-  return "⚠️ MEDICAL DISCLAIMER: This tool is for reference only and should not be used as a substitute for professional medical diagnosis. Always consult with a qualified healthcare provider for accurate diagnosis and treatment.";
-}
+// ============================================================================
+// Export API Client Instance
+// ============================================================================
+
+export const apiClient = new ApiClient("/api");

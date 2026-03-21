@@ -1,3 +1,4 @@
+import { APP_VERSION } from "../../../shared/version.js";
 import express, { Request, Response, NextFunction } from "express";
 import { createServer } from "http";
 import path from "path";
@@ -324,14 +325,18 @@ async function startServer() {
   app.use(express.urlencoded({ extended: true }));
 
   // Security Headers Middleware
+  // ✅ CORS configuration from environment
+  const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS || (isDev ? "*" : "https://your-domain");
+  
   app.use((req: Request, res: Response, next: NextFunction) => {
-    // CORS headers
-    res.setHeader("Access-Control-Allow-Origin", "*");
+    // CORS headers - configurable per environment
+    res.setHeader("Access-Control-Allow-Origin", ALLOWED_ORIGINS);
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     res.setHeader(
       "Access-Control-Allow-Headers",
       "Content-Type, Authorization"
     );
+    res.setHeader("Access-Control-Max-Age", "3600");
 
     // Security headers with proper CSP
     res.setHeader("X-Content-Type-Options", "nosniff");
@@ -510,20 +515,30 @@ async function startServer() {
     mimeType: string
   ): Promise<PredictionResponse | null> {
     try {
-      // ✅ 音訊格式轉換：確保 Python 一律接收 WAV
-      const targetMimeType = getTargetMimeType();
-      const conversionStatus = getConversionStatus(mimeType, targetMimeType);
-      logger.info("Audio format conversion", {
-        source: mimeType,
-        target: targetMimeType,
-        status: conversionStatus,
-      });
+      // ✅ 音訊格式轉換邏輯
+      let convertedBuffer = fileBuffer;
+      let actualMimeType = mimeType;
 
-      // 轉換音訊格式
-      const convertedBuffer = await convertToWav(fileBuffer, mimeType);
+      // 嘗試轉換為 WAV
+      try {
+        convertedBuffer = await convertToWav(fileBuffer, mimeType);
+        actualMimeType = "audio/wav";
+        logger.info("Audio format conversion successful", {
+          source: mimeType,
+          target: "audio/wav",
+        });
+      } catch (conversionError) {
+        // ✅ 轉換失敗時：保持原始格式，不要偽裝
+        logger.warn("Audio format conversion failed, using original format", {
+          source: mimeType,
+          error: conversionError instanceof Error ? conversionError.message : String(conversionError),
+        });
+        // 保持原始 buffer 和 MIME type
+        actualMimeType = mimeType;
+      }
 
       const formData = new FormData();
-      const blob = new Blob([convertedBuffer], { type: targetMimeType });
+      const blob = new Blob([convertedBuffer], { type: actualMimeType });
       formData.append("file", blob, filename);
 
       const response = await fetch(`${PYTHON_API_URL}/predict`, {
@@ -599,11 +614,26 @@ async function startServer() {
         return;
       }
 
+      // ✅ Parse Python health response to check model_loaded
+      const pythonHealth = (await pythonHealthResponse.json()) as Record<string, unknown>;
+      const modelLoaded = pythonHealth.model_loaded === true;
+
+      if (!modelLoaded) {
+        res.status(503).json({
+          status: "not_ready",
+          timestamp: new Date().toISOString(),
+          python_backend: "ok",
+          model_loaded: false,
+          reason: "Model not loaded in Python backend",
+        });
+        return;
+      }
+
       res.json({
         status: "ready",
         timestamp: new Date().toISOString(),
         python_backend: "ok",
-        model_ready: true,
+        model_loaded: true,
       });
     } catch (err) {
       res.status(503).json({

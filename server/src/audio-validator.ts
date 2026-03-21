@@ -35,7 +35,6 @@ const AUDIO_MAGIC_BYTES: Record<string, Uint8Array> = {
 const FORMAT_TO_EXTENSIONS: Record<string, string[]> = {
   wav: ["wav"],
   mp3: ["mp3"],
-  m4a: ["m4a", "mp4"],
   ogg: ["ogg"],
   webm: ["webm"],
 };
@@ -197,7 +196,7 @@ export function validateAudioFile(
   if (!detectedFormat) {
     return {
       valid: false,
-      error: "Unrecognized audio format. Supported formats: WAV, MP3, M4A, OGG, WebM",
+      error: "Unrecognized audio format. Supported formats: WAV, MP3, OGG, WebM",
       details: { fileSize: buffer.length },
     };
   }

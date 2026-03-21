@@ -1,3 +1,4 @@
+from .version import APP_VERSION, API_VERSION
 """
 FastAPI Application for COVID-19 Cough Detection
 
@@ -60,7 +61,7 @@ async def lifespan(app: FastAPI):
     if model_path:
         logger.info(f"  Model path: {model_path}")
     else:
-        logger.info("  Using stub model (demo mode)")
+        logger.info("  Model not ready - service in strict mode")
 
     logger.info("API startup complete")
 
@@ -82,15 +83,18 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# ✅ CORS configuration from environment
+import os
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
+
 # Add CORS middleware
-# Note: allow_origins=["*"] with allow_credentials=True is not valid per CORS spec
-# Using allow_credentials=False with wildcard origins for maximum compatibility
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins (credentials not needed for same-origin proxy)
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=False,  # Credentials handled at proxy level (server/index.ts)
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["Content-Type", "Authorization"],
+    max_age=3600,  # Cache preflight requests for 1 hour
 )
 
 # ============================================================================
@@ -111,6 +115,10 @@ class HealthResponse(BaseModel):
     """Health check response."""
 
     status: str
+    model_loaded: bool
+    model_version: Optional[str] = None
+    device: str
+    error: Optional[str] = None
     timestamp: str
 
 
@@ -118,7 +126,9 @@ class VersionResponse(BaseModel):
     """Version information response."""
 
     api_version: str
-    model_version: str
+    model_version: Optional[str] = None
+    model_ready: bool
+    device: str
     timestamp: str
 
 
@@ -136,10 +146,16 @@ class ErrorResponse(BaseModel):
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
-    """Health check endpoint."""
-    # ✅ 改進：使用 timezone-aware datetime
+    """Health check endpoint - returns real model status."""
+    # ✅ 使用 model_inference.get_status() 獲取真實狀態
+    status = model_inference.get_status()
+    
     return {
-        "status": "ok",
+        "status": "ok" if status["is_ready"] else "degraded",
+        "model_loaded": status["is_ready"],
+        "model_version": status["model_version"],
+        "device": status["device"],
+        "error": status["error"],
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
@@ -147,10 +163,14 @@ async def health_check():
 @app.get("/version", response_model=VersionResponse)
 async def get_version():
     """Get API and model version information."""
-    # ✅ 改進：使用 timezone-aware datetime
+    # ✅ 使用真實的 model 狀態
+    status = model_inference.get_status()
+    
     return {
-        "api_version": "1.0.0",
-        "model_version": model_inference.model_version if model_inference else "unknown",
+        "api_version": API_VERSION,
+        "model_version": status["model_version"],
+        "model_ready": status["is_ready"],
+        "device": status["device"],
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
