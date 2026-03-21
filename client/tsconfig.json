@@ -3,11 +3,14 @@
   "compilerOptions": {
     "jsx": "react-jsx",
     "types": ["vite/client", "node"],
+    "noEmit": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@shared/*": ["../shared/*"]
     },
     "outDir": "./dist",
+    "skipLibCheck": true,
     "rootDir": "./src"
   },
   "include": ["src", "vite-env.d.ts"],

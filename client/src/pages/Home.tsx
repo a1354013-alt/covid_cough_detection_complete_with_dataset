@@ -80,13 +80,12 @@ export default function Home() {
       });
 
       // ✅ 改進的 MIME 類型選擇邏輯
-      // 優先順序：WebM > MP4 > WAV
-      // 不再假設 WAV 一定支援
+      // 優先順序：WebM (Opus codec) > WebM > OGG
+      // 後端只支援：WAV, MP3, OGG, WebM
       const supportedTypes = [
         "audio/webm;codecs=opus",
         "audio/webm",
-        "audio/mp4",
-        "audio/wav",
+        "audio/ogg",
       ];
 
       let mimeType = "";
@@ -97,9 +96,9 @@ export default function Home() {
         }
       }
 
-      // 如果都不支援，使用預設
+      // 如果都不支援，使用預設（通常是 audio/webm）
       if (!mimeType) {
-        mimeType = ""; // 使用瀏覽器預設
+        mimeType = ""; // 瀏覽器會選擇預設格式
       }
 
       recordedMimeTypeRef.current = mimeType; // ✅ 存儲實際使用的 MIME 類型
@@ -140,6 +139,14 @@ export default function Home() {
         // ✅ 驗證錄音時間
         if (finalDuration < MIN_RECORDING_TIME) {
           setError(`Recording too short (${finalDuration}s). Minimum is ${MIN_RECORDING_TIME}s.`);
+          setRecordingState("idle");
+          return;
+        }
+
+        // ✅ 驗證音訊格式是否被後端支援
+        const supportedBackendFormats = ["audio/webm", "audio/ogg", "audio/mpeg", "audio/wav"];
+        if (!supportedBackendFormats.some(fmt => actualMimeType.startsWith(fmt))) {
+          setError(`Unsupported audio format: ${actualMimeType}. Please try again.`);
           setRecordingState("idle");
           return;
         }

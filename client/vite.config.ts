@@ -1,14 +1,12 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { manusRuntime } from 'vite-plugin-manus-runtime'
-import { getViteConfig } from '@tailwindcss/vite'
+import tailwindcss from '@tailwindcss/vite'
 import path from 'path'
 
 export default defineConfig({
   plugins: [
     react(),
-    getViteConfig(),
-    manusRuntime(),
+    tailwindcss(),
   ],
   server: {
     port: 5173,

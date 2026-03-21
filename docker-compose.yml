@@ -18,7 +18,7 @@ services:
     restart: unless-stopped
     # ✅ healthz = liveness check (Node process alive)
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/api/healthzz"]
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/healthz"]
       interval: 30s
       timeout: 10s
       retries: 3

@@ -71,7 +71,7 @@ export function needsConversion(mimeType: string): boolean {
  */
 async function isFfmpegAvailable(): Promise<boolean> {
   try {
-    await execAsync("ffmpeg -version", { stdio: "ignore" });
+    await execAsync("ffmpeg -version", { maxBuffer: 1024 * 1024 });
     return true;
   } catch {
     return false;
@@ -133,7 +133,7 @@ export async function convertToWav(
     // -y: overwrite output file
     const ffmpegCmd = `ffmpeg -i "${inputFile}" -acodec pcm_s16le -ar 16000 -ac 1 -y "${outputFile}" 2>/dev/null`;
 
-    await execAsync(ffmpegCmd, { stdio: "ignore" });
+    await execAsync(ffmpegCmd, { maxBuffer: 1024 * 1024 });
 
     // Read converted WAV file
     const wavBuffer = await readFile(outputFile);

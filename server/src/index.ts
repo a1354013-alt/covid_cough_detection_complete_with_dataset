@@ -1,4 +1,4 @@
-import { APP_VERSION } from "../../../shared/version.js";
+import { APP_VERSION } from "./version.js";
 import express, { Request, Response, NextFunction } from "express";
 import { createServer } from "http";
 import path from "path";
@@ -7,7 +7,7 @@ import Busboy from "busboy";
 import type { FileInfo } from "busboy";
 import { validateAudioFile } from "./audio-validator.js";
 import { logger } from "./logger.js";
-import { convertToWav, getTargetMimeType, getConversionStatus } from "./audio-converter.js"; // ✅ 音訊格式轉換
+import { convertToWav } from "./audio-converter.js"; // ✅ 音訊格式轉換
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -326,11 +326,23 @@ async function startServer() {
 
   // Security Headers Middleware
   // ✅ CORS configuration from environment
-  const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS || (isDev ? "*" : "https://your-domain");
+  const ALLOWED_ORIGINS_STR = process.env.ALLOWED_ORIGINS || (isDev ? "*" : "https://your-domain");
+  const ALLOWED_ORIGINS_LIST = ALLOWED_ORIGINS_STR === "*" ? ["*"] : ALLOWED_ORIGINS_STR.split(",").map(o => o.trim());
   
   app.use((req: Request, res: Response, next: NextFunction) => {
-    // CORS headers - configurable per environment
-    res.setHeader("Access-Control-Allow-Origin", ALLOWED_ORIGINS);
+    // ✅ CORS headers - properly handle multiple origins
+    const origin = req.headers.origin as string;
+    
+    // Check if origin is allowed
+    if (ALLOWED_ORIGINS_LIST.includes("*")) {
+      // Wildcard: allow all origins
+      res.setHeader("Access-Control-Allow-Origin", "*");
+    } else if (origin && ALLOWED_ORIGINS_LIST.includes(origin)) {
+      // Specific origin match: return only that origin
+      res.setHeader("Access-Control-Allow-Origin", origin);
+    }
+    // If origin not in whitelist, don't set CORS header (request will be blocked)
+    
     res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
     res.setHeader(
       "Access-Control-Allow-Headers",
@@ -586,7 +598,7 @@ async function startServer() {
       status: "alive",
       timestamp: new Date().toISOString(),
       service: "covid-cough-detection-api",
-      version: "1.0.13",
+      version: APP_VERSION,
     });
   });
 
@@ -693,7 +705,7 @@ async function startServer() {
       if (pythonVersionResponse.ok) {
         const pythonVersion = await pythonVersionResponse.json();
         res.json({
-          api_version: "1.0.13",
+          api_version: APP_VERSION,
           model_version: (pythonVersion as Record<string, unknown>).model_version || "unknown",
           python_backend: "connected",
           timestamp: new Date().toISOString(),
@@ -705,7 +717,7 @@ async function startServer() {
     }
 
     res.json({
-      api_version: "1.0.13",
+      api_version: APP_VERSION,
       model_version: "unavailable",
       python_backend: "unavailable",
       timestamp: new Date().toISOString(),

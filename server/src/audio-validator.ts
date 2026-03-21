@@ -32,6 +32,7 @@ const AUDIO_MAGIC_BYTES: Record<string, Uint8Array> = {
 };
 
 // Map detected format to allowed file extensions
+// ✅ v1.0.13: Only support WAV, MP3, OGG, WebM (removed M4A, MP4)
 const FORMAT_TO_EXTENSIONS: Record<string, string[]> = {
   wav: ["wav"],
   mp3: ["mp3"],
@@ -94,6 +95,10 @@ function isMP3FrameSync(buffer: Buffer): boolean {
 /**
  * ✅ 改進：驗證 M4A/MP4 是否為音訊容器
  * 檢查 ftyp brand 以確保不是影片容器
+ * 
+ * ✅ v1.0.13: 生產環境嚴格模式
+ * - 只接受白名單中的 brand
+ * - 開發環境可寬容處理未知 brand
  */
 function isAudioM4A(buffer: Buffer): boolean {
   // M4A/MP4 結構：offset 4 是 "ftyp"
@@ -106,16 +111,22 @@ function isAudioM4A(buffer: Buffer): boolean {
   // ✅ 檢查 ftyp brand（offset 8，4 bytes）
   // 只接受已知的音訊 brand
   const brand = buffer.toString("ascii", 8, 12);
+  const isProduction = process.env.NODE_ENV === "production";
   
-  // 如果 brand 在白名單中，或是以 "M4" 開頭（通常是音訊）
+  // 白名單檢查
   if (AUDIO_FTYP_BRANDS.has(brand) || brand.startsWith("M4")) {
     return true;
   }
   
-  // 記錄未知的 brand 但不直接拒絕
-  // （某些合法的音訊 MP4 可能有其他 brand）
-  console.warn(`[AUDIO-VALIDATOR] Unknown MP4 ftyp brand: ${brand}`);
-  return true; // 寬容處理
+  // 生產環境：嚴格拒絕未知 brand
+  if (isProduction) {
+    console.warn(`[AUDIO-VALIDATOR] Rejected unknown MP4 ftyp brand in production: ${brand}`);
+    return false;
+  }
+  
+  // 開發環境：寬容處理未知 brand（便於測試）
+  console.warn(`[AUDIO-VALIDATOR] Unknown MP4 ftyp brand (dev mode): ${brand}`);
+  return true;
 }
 
 /**
@@ -196,7 +207,7 @@ export function validateAudioFile(
   if (!detectedFormat) {
     return {
       valid: false,
-      error: "Unrecognized audio format. Supported formats: WAV, MP3, OGG, WebM",
+      error: "Unsupported audio format. Supported formats: WAV, MP3, OGG, WebM",
       details: { fileSize: buffer.length },
     };
   }
@@ -204,7 +215,8 @@ export function validateAudioFile(
   // If filename provided, verify extension is supported and matches detected format
   if (filename) {
     const ext = filename.toLowerCase().split(".").pop();
-    const supportedExtensions = ["wav", "mp3", "m4a", "mp4", "ogg", "webm"];
+    // ✅ v1.0.13: Only support WAV, MP3, OGG, WebM (removed M4A, MP4)
+    const supportedExtensions = ["wav", "mp3", "ogg", "webm"];
 
     // Check if extension is in supported list
     if (!supportedExtensions.includes(ext || "")) {
@@ -238,7 +250,8 @@ export function validateAudioFile(
  */
 export function getFormatFromFilename(filename: string): string | null {
   const ext = filename.toLowerCase().split(".").pop();
-  if (ext && ["wav", "mp3", "m4a", "mp4", "ogg", "webm"].includes(ext)) {
+  // ✅ v1.0.13: Only support WAV, MP3, OGG, WebM (removed M4A, MP4)
+  if (ext && ["wav", "mp3", "ogg", "webm"].includes(ext)) {
     return ext;
   }
   return null;

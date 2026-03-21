@@ -1,9 +1,10 @@
-// Shared constants
-export { COOKIE_NAME, ONE_YEAR_MS } from "@shared/const";
-
 // App configuration
 export const APP_NAME = "COVID-19 Cough Detection";
-export const APP_VERSION = "1.0.0";
+export const APP_VERSION = "1.0.13";
+
+// Shared constants
+export const COOKIE_NAME = "app_session_id";
+export const ONE_YEAR_MS = 1000 * 60 * 60 * 24 * 365;
 
 // API configuration
 export const API_BASE_URL = "/api";

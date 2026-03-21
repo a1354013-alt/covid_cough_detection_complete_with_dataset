@@ -79,7 +79,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="COVID-19 Cough Detection API",
     description="AI-powered COVID-19 detection from cough audio",
-    version="1.0.13",
+    version=APP_VERSION,
     lifespan=lifespan,
 )
 
@@ -146,11 +146,19 @@ class ErrorResponse(BaseModel):
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
-    """Health check endpoint - returns real model status."""
+    """
+    Health check endpoint - returns real model status.
+    
+    Returns:
+    - 200 OK: Model is loaded and ready
+    - 503 Service Unavailable: Model is not ready
+    
+    Used by Docker/K8s health checks to determine if container is ready.
+    """
     # ✅ 使用 model_inference.get_status() 獲取真實狀態
     status = model_inference.get_status()
     
-    return {
+    response_data = {
         "status": "ok" if status["is_ready"] else "degraded",
         "model_loaded": status["is_ready"],
         "model_version": status["model_version"],
@@ -158,6 +166,15 @@ async def health_check():
         "error": status["error"],
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
+    
+    # ✅ 後端不準備時回傳 503，不是 200
+    if not status["is_ready"]:
+        raise HTTPException(
+            status_code=503,
+            detail=response_data
+        )
+    
+    return response_data
 
 
 @app.get("/version", response_model=VersionResponse)
