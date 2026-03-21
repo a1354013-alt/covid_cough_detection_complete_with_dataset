@@ -1,4 +1,3 @@
-import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
@@ -13,7 +12,7 @@ import {
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { apiClient, formatPrediction, getAudioFileName } from "@/lib/api";
-import type { PredictionResponse } from "@/lib/api";
+import type { UIPredictionResult } from "@/lib/api";
 
 // ============================================================================
 // Types
@@ -36,7 +35,7 @@ export default function Home() {
   const [recordingState, setRecordingState] = useState<RecordingState>("idle");
   const [recordingTime, setRecordingTime] = useState(0);
   const [recordingData, setRecordingData] = useState<RecordingData | null>(null);
-  const [prediction, setPrediction] = useState<PredictionResponse | null>(null);
+  const [prediction, setPrediction] = useState<UIPredictionResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
 
@@ -45,6 +44,8 @@ export default function Home() {
   const audioChunksRef = useRef<Blob[]>([]);
   const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
+  const recordingTimeRef = useRef(0); // ✅ 即時錄音時間，不受 React state 閉包影響
+  const recordedMimeTypeRef = useRef<string>("audio/webm"); // ✅ 存儲實際錄製的 MIME 類型
 
   // Constants
   const MAX_RECORDING_TIME = 30; // seconds
@@ -81,6 +82,7 @@ export default function Home() {
       setPrediction(null);
       audioChunksRef.current = [];
       setRecordingTime(0);
+      recordingTimeRef.current = 0; // ✅ 重置 ref
 
       // Request microphone access with specific constraints
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -92,18 +94,30 @@ export default function Home() {
         },
       });
 
-      // Create MediaRecorder with appropriate MIME type
-      let mimeType = "audio/webm";
-      if (!MediaRecorder.isTypeSupported(mimeType)) {
-        // Fallback to other types if webm not supported
-        mimeType = "audio/mp4";
-        if (!MediaRecorder.isTypeSupported(mimeType)) {
-          mimeType = "audio/wav";
-          if (!MediaRecorder.isTypeSupported(mimeType)) {
-            mimeType = ""; // Use default
-          }
+      // ✅ 改進的 MIME 類型選擇邏輯
+      // 優先順序：WebM > MP4 > WAV
+      // 不再假設 WAV 一定支援
+      const supportedTypes = [
+        "audio/webm;codecs=opus",
+        "audio/webm",
+        "audio/mp4",
+        "audio/wav",
+      ];
+
+      let mimeType = "";
+      for (const type of supportedTypes) {
+        if (MediaRecorder.isTypeSupported(type)) {
+          mimeType = type;
+          break;
         }
       }
+
+      // 如果都不支援，使用預設
+      if (!mimeType) {
+        mimeType = ""; // 使用瀏覽器預設
+      }
+
+      recordedMimeTypeRef.current = mimeType; // ✅ 存儲實際使用的 MIME 類型
 
       const mediaRecorder = new MediaRecorder(stream, {
         mimeType: mimeType || undefined,
@@ -121,7 +135,7 @@ export default function Home() {
 
         // Create blob from chunks
         const audioBlob = new Blob(audioChunksRef.current, {
-          type: mimeType || "audio/webm",
+          type: recordedMimeTypeRef.current || "audio/webm",
         });
 
         // Validate file size
@@ -131,9 +145,19 @@ export default function Home() {
           return;
         }
 
+        // ✅ 使用 ref 中的即時值，而不是 state 中的舊值
+        const finalDuration = recordingTimeRef.current;
+
+        // ✅ 驗證錄音時間
+        if (finalDuration < MIN_RECORDING_TIME) {
+          setError(`Recording too short (${finalDuration}s). Minimum is ${MIN_RECORDING_TIME}s.`);
+          setRecordingState("idle");
+          return;
+        }
+
         setRecordingData({
           blob: audioBlob,
-          duration: recordingTime,
+          duration: finalDuration,
           timestamp: new Date(),
         });
 
@@ -144,19 +168,18 @@ export default function Home() {
       mediaRecorder.start();
       setRecordingState("recording");
 
-      // Start timer
+      // ✅ 改進的計時器邏輯
+      // 同時更新 state（用於 UI 顯示）和 ref（用於 onstop 讀取）
       timerIntervalRef.current = setInterval(() => {
-        setRecordingTime((prev) => {
-          const newTime = prev + 1;
-          if (newTime >= MAX_RECORDING_TIME) {
-            mediaRecorder.stop();
-            if (timerIntervalRef.current) {
-              clearInterval(timerIntervalRef.current);
-            }
-            return newTime;
+        recordingTimeRef.current += 1;
+        setRecordingTime(recordingTimeRef.current);
+
+        if (recordingTimeRef.current >= MAX_RECORDING_TIME) {
+          mediaRecorder.stop();
+          if (timerIntervalRef.current) {
+            clearInterval(timerIntervalRef.current);
           }
-          return newTime;
-        });
+        }
       }, 1000);
     } catch (err) {
       let message = "Failed to access microphone";
@@ -188,8 +211,26 @@ export default function Home() {
   };
 
   const resetRecording = () => {
+    // ✅ 改進：完整的資源釋放
+    // 1. 停止音訊播放
+    if (audioElementRef.current) {
+      audioElementRef.current.pause();
+      audioElementRef.current.currentTime = 0;
+      
+      // 2. 釋放 blob URL
+      if (audioElementRef.current.src && audioElementRef.current.src.startsWith("blob:")) {
+        URL.revokeObjectURL(audioElementRef.current.src);
+      }
+      audioElementRef.current.src = "";
+    }
+    
+    // 3. 清空錄音數據
+    audioChunksRef.current = [];
+    
+    // 4. 重置狀態
     setRecordingState("idle");
     setRecordingTime(0);
+    recordingTimeRef.current = 0;
     setRecordingData(null);
     setPrediction(null);
     setError(null);
@@ -200,349 +241,222 @@ export default function Home() {
   // Upload & Prediction
   // ========================================================================
 
-  const uploadAndPredict = async () => {
-    if (!recordingData) {
-      setError("No recording data available");
-      return;
-    }
+  const uploadRecording = async () => {
+    if (!recordingData) return;
 
-    if (recordingData.duration < MIN_RECORDING_TIME) {
-      setError(
-        `Recording too short. Minimum ${MIN_RECORDING_TIME} seconds required.`
-      );
-      return;
-    }
-
-    if (recordingData.blob.size > MAX_FILE_SIZE) {
-      setError(`Recording too large. Maximum ${MAX_FILE_SIZE / 1024 / 1024}MB allowed.`);
-      return;
-    }
+    setRecordingState("uploading");
+    setError(null);
+    setUploadProgress(0);
 
     try {
-      setError(null);
-      setRecordingState("uploading");
-      setUploadProgress(0);
+      // Get filename based on actual recorded format
+      const filename = getAudioFileName(recordedMimeTypeRef.current);
 
-      // Upload and get prediction with progress tracking
-      const filename = getAudioFileName(recordingData.blob.type);
       const result = await apiClient.predict(
         recordingData.blob,
         filename,
-        (progress) => {
-          setUploadProgress(progress);
-        }
+        (progress) => setUploadProgress(progress)
       );
 
-      setUploadProgress(100);
-      setPrediction(result);
+      const formatted = formatPrediction(result);
+      setPrediction(formatted);
       setRecordingState("recorded");
-
-      // Reset progress after a moment
-      setTimeout(() => setUploadProgress(0), 1000);
     } catch (err) {
-      let message = "Failed to get prediction";
-      
-      if (err instanceof Error) {
-        message = err.message;
-      }
-
-      // Provide helpful error messages based on error type
-      if (message.includes("timeout")) {
-        message = "Request timed out (120s). The server took too long to respond. Please try again.";
-      } else if (message.includes("Network")) {
-        message = "Network error. Please check your connection and try again.";
-      } else if (message.includes("aborted")) {
-        message = "Request was cancelled. Please try again.";
-      }
-
+      const message = err instanceof Error ? err.message : "Upload failed";
       setError(message);
       setRecordingState("recorded");
-      setUploadProgress(0);
     }
-  };
-
-  // ========================================================================
-  // Playback
-  // ========================================================================
-
-  const playRecording = () => {
-    if (!recordingData || !audioElementRef.current) return;
-
-    // Revoke old URL if it exists
-    if (audioElementRef.current.src && audioElementRef.current.src.startsWith("blob:")) {
-      URL.revokeObjectURL(audioElementRef.current.src);
-    }
-
-    const url = URL.createObjectURL(recordingData.blob);
-    audioElementRef.current.src = url;
-    audioElementRef.current.play().catch((err) => {
-      setError(`Failed to play recording: ${err instanceof Error ? err.message : String(err)}`);
-    });
   };
 
   // ========================================================================
   // Render
   // ========================================================================
 
-  const formattedPrediction = prediction ? formatPrediction(prediction) : null;
-  const isRecording = recordingState === "recording";
-  const isUploading = recordingState === "uploading";
-  const hasRecording = recordingData !== null;
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 sm:p-8">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-4 sm:p-6">
       <div className="max-w-2xl mx-auto">
         {/* Header */}
         <div className="text-center mb-8">
-          <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 mb-2">
+          <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-2">
             COVID-19 Cough Detection
           </h1>
-          <p className="text-lg text-gray-600">
-            Record your cough and get an instant analysis
+          <p className="text-gray-600">
+            Record a cough sample for AI-powered analysis
           </p>
         </div>
 
-        {/* Error Alert */}
-        {error && (
-          <Alert className="mb-6 border-red-200 bg-red-50">
-            <AlertCircle className="h-4 w-4 text-red-600" />
-            <AlertDescription className="text-red-800">{error}</AlertDescription>
-          </Alert>
-        )}
-
-        {/* Main Recording Card */}
-        <Card className="mb-6 shadow-lg border-0">
-          <CardHeader className="bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-t-lg">
+        {/* Main Card */}
+        <Card className="shadow-lg mb-6">
+          <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Mic className="w-5 h-5" />
               Record Your Cough
             </CardTitle>
           </CardHeader>
-          <CardContent className="pt-8">
+          <CardContent className="space-y-6">
             {/* Recording Timer */}
-            {isRecording && (
-              <div className="text-center mb-6">
-                <div className="text-5xl font-bold text-blue-600 font-mono mb-2">
-                  {String(Math.floor(recordingTime / 60)).padStart(2, "0")}:
-                  {String(recordingTime % 60).padStart(2, "0")}
+            {recordingState === "recording" && (
+              <div className="text-center">
+                <div className="text-5xl font-bold text-red-600 mb-2">
+                  {recordingTime}s
                 </div>
-                <p className="text-gray-600">
-                  Recording... (max {MAX_RECORDING_TIME}s)
+                <p className="text-sm text-gray-600">
+                  Recording in progress... (max {MAX_RECORDING_TIME}s)
                 </p>
               </div>
             )}
 
-            {/* Recording Status */}
-            {!isRecording && hasRecording && (
-              <div className="text-center mb-6">
-                <div className="flex items-center justify-center gap-2 mb-2">
-                  <CheckCircle2 className="w-6 h-6 text-green-600" />
-                  <span className="text-lg font-semibold text-green-600">
-                    Recording Complete
-                  </span>
-                </div>
-                <p className="text-gray-600">
-                  Duration: {recordingData?.duration || 0}s | Size: {(recordingData?.blob.size || 0) / 1024 < 1024 ? `${((recordingData?.blob.size || 0) / 1024).toFixed(1)}KB` : `${((recordingData?.blob.size || 0) / 1024 / 1024).toFixed(1)}MB`}
-                </p>
-              </div>
-            )}
-
-            {/* Idle State */}
-            {!isRecording && !hasRecording && (
-              <div className="text-center mb-6">
-                <div className="flex justify-center mb-4">
-                  <div className="w-16 h-16 rounded-full bg-blue-100 flex items-center justify-center">
-                    <Mic className="w-8 h-8 text-blue-600" />
-                  </div>
-                </div>
-                <p className="text-gray-600">
-                  Click the button below to start recording
-                </p>
-              </div>
-            )}
-
-            {/* Action Buttons */}
-            <div className="flex flex-col sm:flex-row gap-3 justify-center">
-              {!isRecording && !hasRecording && (
-                <Button
+            {/* Recording Controls */}
+            <div className="flex gap-3 justify-center">
+              {recordingState === "idle" && (
+                <button
                   onClick={startRecording}
-                  size="lg"
-                  className="bg-blue-600 hover:bg-blue-700 text-white"
+                  className="flex items-center gap-2 px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition"
                 >
-                  <Mic className="w-5 h-5 mr-2" />
+                  <Mic className="w-5 h-5" />
                   Start Recording
-                </Button>
+                </button>
               )}
 
-              {isRecording && (
-                <Button
+              {recordingState === "recording" && (
+                <button
                   onClick={stopRecording}
-                  size="lg"
-                  className="bg-red-600 hover:bg-red-700 text-white"
+                  className="flex items-center gap-2 px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition"
                 >
-                  <Square className="w-5 h-5 mr-2" />
+                  <Square className="w-5 h-5" />
                   Stop Recording
-                </Button>
+                </button>
               )}
 
-              {hasRecording && (
+              {(recordingState === "recorded" || recordingState === "uploading") && (
                 <>
-                  <Button
-                    onClick={playRecording}
-                    variant="outline"
-                    size="lg"
-                    className="border-blue-600 text-blue-600 hover:bg-blue-50"
+                  <button
+                    onClick={resetRecording}
+                    disabled={recordingState === "uploading"}
+                    className="flex items-center gap-2 px-6 py-3 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 transition disabled:opacity-50"
                   >
-                    <Volume2 className="w-5 h-5 mr-2" />
-                    Play
-                  </Button>
-                  <Button
-                    onClick={uploadAndPredict}
-                    size="lg"
-                    disabled={isUploading}
-                    className="bg-green-600 hover:bg-green-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                    <RotateCcw className="w-5 h-5" />
+                    Reset
+                  </button>
+                  <button
+                    onClick={uploadRecording}
+                    disabled={recordingState === "uploading"}
+                    className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
                   >
-                    {isUploading ? (
+                    {recordingState === "uploading" ? (
                       <>
-                        <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                        Analyzing... {uploadProgress}%
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                        Uploading...
                       </>
                     ) : (
                       <>
-                        <Upload className="w-5 h-5 mr-2" />
+                        <Upload className="w-5 h-5" />
                         Analyze
                       </>
                     )}
-                  </Button>
-                  <Button
-                    onClick={resetRecording}
-                    variant="outline"
-                    size="lg"
-                    disabled={isUploading}
-                    className="border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    <RotateCcw className="w-5 h-5 mr-2" />
-                    Reset
-                  </Button>
+                  </button>
                 </>
               )}
             </div>
 
-            {/* Upload Progress Bar */}
-            {isUploading && uploadProgress > 0 && (
-              <div className="mt-6">
-                <div className="w-full bg-gray-200 rounded-full h-2">
-                  <div
-                    className="bg-green-600 h-2 rounded-full transition-all duration-300"
-                    style={{ width: `${uploadProgress}%` }}
-                  />
-                </div>
-                <p className="text-sm text-gray-600 text-center mt-2">
-                  Uploading and analyzing... {uploadProgress}%
+            {/* ✅ 改進：分段式進度顯示，不誤導使用者 */}
+            {recordingState === "uploading" && (
+              <div className="space-y-2">
+                {uploadProgress < 100 ? (
+                  <>
+                    <p className="text-sm text-gray-600">Uploading... {uploadProgress}%</p>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div
+                        className="bg-blue-600 h-2 rounded-full transition-all"
+                        style={{ width: `${uploadProgress}%` }}
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm text-gray-600">Analyzing...</p>
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div className="bg-blue-600 h-2 rounded-full w-full animate-pulse" />
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* Recording Info */}
+            {recordingData && recordingState !== "uploading" && (
+              <div className="bg-blue-50 p-4 rounded-lg">
+                <p className="text-sm text-gray-700">
+                  <strong>Duration:</strong> {recordingData.duration}s
+                </p>
+                <p className="text-sm text-gray-700">
+                  <strong>File Size:</strong> {(recordingData.blob.size / 1024).toFixed(1)} KB
+                </p>
+                <p className="text-sm text-gray-700">
+                  <strong>Format:</strong> {recordedMimeTypeRef.current || "default"}
                 </p>
               </div>
             )}
           </CardContent>
         </Card>
 
-        {/* Prediction Result Card */}
-        {prediction && formattedPrediction && (
-          <Card className="shadow-lg border-0 mb-6">
-            <CardHeader
-              className={`text-white rounded-t-lg ${
-                prediction.label === "positive"
-                  ? "bg-gradient-to-r from-red-600 to-orange-600"
-                  : "bg-gradient-to-r from-green-600 to-emerald-600"
-              }`}
-            >
-              <CardTitle className="flex items-center gap-2">
-                {prediction.label === "positive" ? (
-                  <AlertCircle className="w-5 h-5" />
-                ) : (
-                  <CheckCircle2 className="w-5 h-5" />
-                )}
+        {/* Error Alert */}
+        {error && (
+          <Alert className="mb-6 bg-red-50 border-red-200">
+            <AlertCircle className="h-4 w-4 text-red-600" />
+            <AlertDescription className="text-red-800">{error}</AlertDescription>
+          </Alert>
+        )}
+
+        {/* Prediction Result */}
+        {prediction && (
+          <Card className="shadow-lg bg-green-50 border-green-200">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-green-900">
+                <CheckCircle2 className="w-5 h-5" />
                 Analysis Result
               </CardTitle>
             </CardHeader>
-            <CardContent className="pt-8">
-              <div className="grid grid-cols-2 gap-4 mb-6">
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <p className="text-sm text-gray-600 mb-1">Result</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {formattedPrediction.label}
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-gray-600">Prediction</p>
+                  <p className="text-xl font-bold text-gray-900">
+                    {prediction.label}
                   </p>
                 </div>
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <p className="text-sm text-gray-600 mb-1">Probability</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {formattedPrediction.probability}
-                  </p>
-                </div>
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <p className="text-sm text-gray-600 mb-1">Confidence</p>
-                  <p className="text-2xl font-bold text-gray-900">
-                    {formattedPrediction.confidence}
-                  </p>
-                </div>
-                <div className="bg-gray-50 p-4 rounded-lg">
-                  <p className="text-sm text-gray-600 mb-1">Model</p>
-                  <p className="text-lg font-mono text-gray-900">
-                    {prediction.model_version}
+                <div>
+                  <p className="text-sm text-gray-600">Confidence</p>
+                  <p className="text-xl font-bold text-gray-900">
+                    {prediction.confidence}
                   </p>
                 </div>
               </div>
 
-              {/* Recommendation */}
-              <Alert className="mb-6 border-blue-200 bg-blue-50">
-                <AlertCircle className="h-4 w-4 text-blue-600" />
-                <AlertDescription className="text-blue-800">
-                  {prediction.label === "positive"
+              <div className="bg-white p-4 rounded-lg border border-green-200">
+                <p className="text-sm text-gray-700 mb-2">
+                  <strong>Medical Advice:</strong>
+                </p>
+                <p className="text-sm text-gray-600">
+                  {prediction.label === "COVID-19 Positive"
                     ? "This result suggests a possible COVID-19 infection. Please consult a healthcare professional for proper diagnosis and testing."
                     : "This result suggests no COVID-19 infection detected. However, if you have symptoms, please consult a healthcare professional."}
+                </p>
+              </div>
+
+              <Alert className="bg-yellow-50 border-yellow-200">
+                <AlertCircle className="h-4 w-4 text-yellow-600" />
+                <AlertDescription className="text-yellow-800">
+                  ⚠️ MEDICAL DISCLAIMER: This tool is for reference only and should not be used as a substitute for professional medical diagnosis. Always consult with a qualified healthcare provider for accurate diagnosis and treatment.
                 </AlertDescription>
               </Alert>
 
-              {/* Disclaimer */}
-              <Alert className="border-yellow-200 bg-yellow-50">
-                <AlertCircle className="h-4 w-4 text-yellow-600" />
-                <AlertDescription className="text-yellow-800 text-sm">
-                  <strong>Disclaimer:</strong> This result is for informational
-                  purposes only and should not be used as a substitute for
-                  professional medical diagnosis. Please consult a healthcare
-                  professional for accurate diagnosis and treatment.
-                </AlertDescription>
-              </Alert>
+              <p className="text-xs text-gray-500 text-center">
+                Model Version: {prediction.modelVersion} | {prediction.timestamp}
+              </p>
             </CardContent>
           </Card>
         )}
-
-        {/* Hidden Audio Element */}
-        <audio ref={audioElementRef} className="hidden" />
-
-        {/* Info Card */}
-        <Card className="shadow-lg border-0 bg-white/50 backdrop-blur">
-          <CardContent className="pt-6">
-            <h3 className="font-semibold text-gray-900 mb-3">How to Use</h3>
-            <ol className="space-y-2 text-sm text-gray-700">
-              <li>
-                <strong>1. Record:</strong> Click "Start Recording" and cough
-                naturally into your microphone
-              </li>
-              <li>
-                <strong>2. Duration:</strong> Record for at least{" "}
-                {MIN_RECORDING_TIME} seconds
-              </li>
-              <li>
-                <strong>3. Analyze:</strong> Click "Analyze" to send your
-                recording to our AI model
-              </li>
-              <li>
-                <strong>4. Results:</strong> Get instant analysis results with
-                confidence scores
-              </li>
-            </ol>
-          </CardContent>
-        </Card>
       </div>
     </div>
   );

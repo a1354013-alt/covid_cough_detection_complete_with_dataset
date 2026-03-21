@@ -102,9 +102,10 @@ class ModelInference:
         """
         Load model from file.
 
-        Supports both:
+        Supports multiple checkpoint formats:
         - state_dict: torch.save(model.state_dict(), path)
         - full model: torch.save(model, path)
+        - checkpoint dict with keys like 'state_dict', 'model_state_dict', 'model'
 
         Args:
             model_path: Path to saved model
@@ -120,14 +121,48 @@ class ModelInference:
 
             loaded = torch.load(model_path, map_location=self.device)
 
-            # Check if it's a state_dict (dict) or full model
+            # ✅ 改進：支援多種 checkpoint 格式
+            state_dict = None
+            
             if isinstance(loaded, dict):
-                # It's a state_dict
-                logger.info("Loading model from state_dict")
-                self.model = SimpleConvNet(input_channels=1, num_classes=2)
-                self.model.load_state_dict(loaded)
+                # 檢查常見的 checkpoint key
+                checkpoint_keys = [
+                    "model_state_dict",  # 常見的 checkpoint 格式
+                    "state_dict",        # PyTorch Lightning 格式
+                    "model",             # 另一種常見格式
+                ]
+                
+                # 嘗試找到 state_dict
+                for key in checkpoint_keys:
+                    if key in loaded:
+                        state_dict = loaded[key]
+                        logger.info(f"Found state_dict under key '{key}'")
+                        break
+                
+                # 如果沒找到特定 key，檢查是否整個 dict 就是 state_dict
+                if state_dict is None:
+                    # 檢查 dict 的 value 是否都是 tensor（state_dict 的特徵）
+                    if all(isinstance(v, (torch.Tensor, torch.nn.Parameter)) for v in loaded.values()):
+                        state_dict = loaded
+                        logger.info("Treating entire dict as state_dict")
+                    else:
+                        # 可能是包含其他信息的 checkpoint，嘗試直接作為模型
+                        logger.warning("Dict does not appear to be a state_dict, attempting to load as full model")
+                        self.model = loaded
+                        self.model.to(self.device)
+                        self.model.eval()
+                        self.is_stub_model = False
+                        self.model_version = "trained-1.0"
+                        logger.info(f"Successfully loaded model from {model_path}")
+                        return
+                
+                # 加載 state_dict
+                if state_dict is not None:
+                    logger.info("Loading model from state_dict")
+                    self.model = SimpleConvNet(input_channels=1, num_classes=2)
+                    self.model.load_state_dict(state_dict)
             else:
-                # It's a full model
+                # 直接是模型
                 logger.info("Loading full model")
                 self.model = loaded
 
@@ -144,7 +179,7 @@ class ModelInference:
         except Exception as e:
             logger.error(
                 f"Failed to load model: {str(e)}. "
-                f"Ensure the file is a valid PyTorch model or state_dict. "
+                f"Ensure the file is a valid PyTorch model, state_dict, or checkpoint. "
                 f"Using stub model instead."
             )
             self._create_stub_model()

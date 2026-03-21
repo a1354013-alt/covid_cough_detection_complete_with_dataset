@@ -1,4 +1,4 @@
-# Multi-stage build for Node.js application
+# Multi-stage build for Node.js application with pnpm workspace
 FROM node:18-alpine AS builder
 
 WORKDIR /app
@@ -6,20 +6,31 @@ WORKDIR /app
 # Install pnpm
 RUN npm install -g pnpm
 
-# Copy package files
+# Copy workspace configuration
+COPY pnpm-workspace.yaml ./
 COPY package.json pnpm-lock.yaml ./
-COPY tsconfig*.json ./
 
-# Install dependencies with pnpm
+# Copy package.json files for all workspace packages
+COPY client/package.json ./client/
+COPY server/package.json ./server/
+
+# Copy TypeScript configuration
+COPY tsconfig.json ./
+COPY client/tsconfig.json ./client/
+COPY server/tsconfig.json ./server/
+
+# Install dependencies with pnpm workspace
 RUN pnpm install --frozen-lockfile
 
 # Copy source code
 COPY client ./client
 COPY server ./server
-COPY shared ./shared
 
-# Build application
-RUN npm run build
+# Build client
+RUN pnpm --filter client run build
+
+# Build server
+RUN pnpm --filter server run build
 
 # Prune production dependencies only
 RUN pnpm prune --prod
@@ -32,10 +43,12 @@ WORKDIR /app
 # Install dumb-init for proper signal handling
 RUN apk add --no-cache dumb-init curl
 
-# Copy built application from builder
-COPY --from=builder /app/dist ./dist
+# Copy built server from builder
+COPY --from=builder /app/server/dist ./dist
+COPY --from=builder /app/server/package.json ./
+
+# Copy production dependencies
 COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \

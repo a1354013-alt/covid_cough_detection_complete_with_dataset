@@ -8,13 +8,28 @@
  */
 
 // ============================================================================
-// Types
+// Type Definitions
 // ============================================================================
 
-export interface PredictionResponse {
+/**
+ * Raw API response from prediction endpoint
+ */
+export interface ApiPredictionResponse {
   label: "positive" | "negative";
   prob: number;
   model_version: string;
+  processing_time_ms: number;
+}
+
+/**
+ * Formatted prediction result for UI display
+ */
+export interface UIPredictionResult {
+  label: string;
+  probability: string;
+  confidence: string;
+  modelVersion: string;
+  timestamp: string;
 }
 
 export interface ApiError {
@@ -58,7 +73,7 @@ class ApiClient {
     audioBlob: Blob,
     filename: string,
     onProgress?: (progress: number) => void
-  ): Promise<PredictionResponse> {
+  ): Promise<ApiPredictionResponse> {
     const formData = new FormData();
     formData.append("audio", audioBlob, filename);
 
@@ -105,11 +120,18 @@ class ApiClient {
 
           if (xhr.status === 200) {
             try {
-              const response = JSON.parse(xhr.responseText) as PredictionResponse;
+              const response = JSON.parse(xhr.responseText) as ApiPredictionResponse;
               resolve(response);
             } catch (err) {
               reject(new Error("Invalid response format from server"));
             }
+          } else if (xhr.status === 503) {
+            // ✅ 處理 503 Service Unavailable
+            reject(
+              new Error(
+                "Model service is temporarily unavailable. Please try again later."
+              )
+            );
           } else {
             try {
               const errorData = JSON.parse(xhr.responseText) as ApiError;
@@ -217,15 +239,25 @@ export function getAudioFileName(
   const minutes = String(timestamp.getMinutes()).padStart(2, "0");
   const seconds = String(timestamp.getSeconds()).padStart(2, "0");
 
-  let extension = "webm";
-  if (mimeType.includes("mp4") || mimeType.includes("mpeg")) {
+  // ✅ 修正：MIME type 副檔名推導要明確拆開
+  // 避免 audio/mpeg 被誤判成 .mp4
+  let extension = "webm"; // 預設
+
+  if (mimeType.includes("audio/mp4") || mimeType.includes("audio/mp4a")) {
     extension = "mp4";
-  } else if (mimeType.includes("wav")) {
+  } else if (mimeType.includes("audio/mpeg") || mimeType.includes("audio/mp3")) {
+    // audio/mpeg 通常是 MP3，不是 MP4
+    extension = "mp3";
+  } else if (mimeType.includes("audio/wav")) {
     extension = "wav";
-  } else if (mimeType.includes("ogg")) {
+  } else if (mimeType.includes("audio/ogg")) {
     extension = "ogg";
+  } else if (mimeType.includes("audio/opus")) {
+    extension = "opus";
+  } else if (mimeType.includes("audio/webm")) {
+    extension = "webm";
   }
-  // Note: flac is not supported in this MVP version
+  // 如果都不匹配，保留預設 webm
 
   return `cough_${year}${month}${date}_${hours}${minutes}${seconds}.${extension}`;
 }
@@ -233,13 +265,23 @@ export function getAudioFileName(
 /**
  * Format prediction result for display
  * 
- * @param result - Raw prediction response
+ * ✅ 修正的 confidence 算法：
+ * - prob 代表 positive 的機率
+ * - confidence 應該是模型對預測的把握度
+ * - 把握度最高時是 prob 最接近 0 或 1（即最遠離 0.5）
+ * 
+ * @param result - Raw API prediction response
  * @returns Formatted prediction for UI display
  */
-export function formatPrediction(result: PredictionResponse) {
+export function formatPrediction(result: ApiPredictionResponse): UIPredictionResult {
   const isPositive = result.label === "positive";
   const probability = Math.round(result.prob * 100);
-  const confidence = Math.round((1 - Math.abs(result.prob - 0.5) * 2) * 100);
+  
+  // ✅ 修正的 confidence 算法
+  // 使用 Math.max(prob, 1-prob) 計算把握度
+  // 這樣 prob=0.9 時 confidence=90%（高把握）
+  // prob=0.5 時 confidence=50%（低把握）
+  const confidence = Math.round(Math.max(result.prob, 1 - result.prob) * 100);
 
   return {
     label: isPositive ? "COVID-19 Positive" : "COVID-19 Negative",

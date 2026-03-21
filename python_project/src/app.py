@@ -9,8 +9,9 @@ import os
 import time
 from typing import Optional
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
 
-from fastapi import FastAPI, UploadFile, File, HTTPException, BackgroundTasks
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
@@ -136,23 +137,21 @@ class ErrorResponse(BaseModel):
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
     """Health check endpoint."""
-    from datetime import datetime
-
+    # ✅ 改進：使用 timezone-aware datetime
     return {
         "status": "ok",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 
 @app.get("/version", response_model=VersionResponse)
 async def get_version():
     """Get API and model version information."""
-    from datetime import datetime
-
+    # ✅ 改進：使用 timezone-aware datetime
     return {
         "api_version": "1.0.0",
         "model_version": model_inference.model_version if model_inference else "unknown",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).isoformat(),
     }
 
 
@@ -222,7 +221,11 @@ async def predict(file: UploadFile = File(...)):
         raise
     except Exception as e:
         logger.error(f"Prediction error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
+        # ✅ 改進：不直接暴露異常信息，改為更通用的錯誤訊息
+        raise HTTPException(
+            status_code=500,
+            detail="Prediction processing failed. Please check the audio file and try again."
+        )
 
 
 # ============================================================================
