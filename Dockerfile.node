@@ -27,10 +27,15 @@ COPY client ./client
 COPY server ./server
 
 # Build client
-RUN pnpm --filter client run build
+RUN pnpm --filter ./client run build
 
 # Build server
-RUN pnpm --filter server run build
+RUN pnpm --filter ./server run build
+
+# Copy client build output to server public directory
+# This ensures the server can serve the frontend static files
+RUN mkdir -p server/dist/public && \
+    cp -r client/dist/* server/dist/public/
 
 # Prune production dependencies only
 RUN pnpm prune --prod
@@ -45,10 +50,12 @@ RUN apk add --no-cache dumb-init curl
 
 # Copy built server from builder
 COPY --from=builder /app/server/dist ./dist
-COPY --from=builder /app/server/package.json ./
 
 # Copy production dependencies
 COPY --from=builder /app/node_modules ./node_modules
+
+# Copy server package.json for reference
+COPY --from=builder /app/server/package.json ./
 
 # Create non-root user
 RUN addgroup -g 1001 -S nodejs && \

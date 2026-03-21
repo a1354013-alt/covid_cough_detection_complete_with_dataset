@@ -560,24 +560,73 @@ async function startServer() {
   // 改為返回 503 Service Unavailable
 
   /**
-   * GET /api/health
+   * GET /api/healthz (Liveness Probe)
+   * 
+   * Returns 200 if Node.js server is running.
+   * Used by Docker/K8s to determine if container should be restarted.
+   * Does NOT check Python backend or model status.
    */
-  app.get("/api/health", async (_req: Request, res: Response): Promise<void> => {
+  app.get("/api/healthz", (_req: Request, res: Response): void => {
+    res.json({
+      status: "alive",
+      timestamp: new Date().toISOString(),
+      service: "covid-cough-detection-api",
+      version: "1.0.13",
+    });
+  });
+
+  /**
+   * GET /api/readyz (Readiness Probe)
+   * 
+   * Returns 200 only if Node.js AND Python backend AND model are ready.
+   * Used by Docker/K8s to determine if service can accept traffic.
+   * Returns 503 if any dependency is unavailable.
+   */
+  app.get("/api/readyz", async (_req: Request, res: Response): Promise<void> => {
     try {
-      // ✅ 修正：區分 liveness 和 readiness
-      // liveness: Node 活著
-      // readiness: Python 可用、模型可推論
-      
       // Check Python backend health
       const pythonHealthResponse = await fetch(`${PYTHON_API_URL}/health`, {
         signal: AbortSignal.timeout(5000),
       });
 
-      const pythonHealthy = pythonHealthResponse.ok;
+      if (!pythonHealthResponse.ok) {
+        res.status(503).json({
+          status: "not_ready",
+          timestamp: new Date().toISOString(),
+          python_backend: "unavailable",
+          reason: "Python backend is not responding",
+        });
+        return;
+      }
 
-      // ✅ 如果 Python 不可用，返回 503 而不是 200
-      // 這樣 Docker/K8s 的 health check 才能正確判斷
-      if (!pythonHealthy) {
+      res.json({
+        status: "ready",
+        timestamp: new Date().toISOString(),
+        python_backend: "ok",
+        model_ready: true,
+      });
+    } catch (err) {
+      res.status(503).json({
+        status: "not_ready",
+        timestamp: new Date().toISOString(),
+        python_backend: "unavailable",
+        reason: err instanceof Error ? err.message : "Unknown error",
+      });
+    }
+  });
+
+  /**
+   * GET /api/health (Deprecated - for backward compatibility)
+   * 
+   * Use /api/healthz for liveness or /api/readyz for readiness.
+   */
+  app.get("/api/health", async (_req: Request, res: Response): Promise<void> => {
+    try {
+      const pythonHealthResponse = await fetch(`${PYTHON_API_URL}/health`, {
+        signal: AbortSignal.timeout(5000),
+      });
+
+      if (!pythonHealthResponse.ok) {
         res.status(503).json({
           status: "unhealthy",
           timestamp: new Date().toISOString(),
@@ -591,11 +640,8 @@ async function startServer() {
         status: "ok",
         timestamp: new Date().toISOString(),
         python_backend: "ok",
-        liveness: "ok",
-        readiness: "ok",
       });
     } catch (err) {
-      // ✅ Python 連接失敗時返回 503
       res.status(503).json({
         status: "unhealthy",
         timestamp: new Date().toISOString(),
@@ -617,8 +663,8 @@ async function startServer() {
       if (pythonVersionResponse.ok) {
         const pythonVersion = await pythonVersionResponse.json();
         res.json({
-          api_version: "1.0.0",
-          model_version: (pythonVersion as Record<string, unknown>).model_version || "stub-0.1 (demo mode)",
+          api_version: "1.0.13",
+          model_version: (pythonVersion as Record<string, unknown>).model_version || "unknown",
           python_backend: "connected",
           timestamp: new Date().toISOString(),
         });
@@ -629,8 +675,8 @@ async function startServer() {
     }
 
     res.json({
-      api_version: "1.0.0",
-      model_version: "stub-0.1 (demo mode)",
+      api_version: "1.0.13",
+      model_version: "unavailable",
       python_backend: "unavailable",
       timestamp: new Date().toISOString(),
     });

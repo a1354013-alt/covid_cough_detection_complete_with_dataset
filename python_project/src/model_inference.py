@@ -3,6 +3,11 @@ Model Inference Module
 
 Handles model loading and inference for COVID-19 cough detection.
 Supports multiple model architectures and provides confidence scoring.
+
+IMPORTANT: This module operates in STRICT MODE.
+- No stub/demo models in production
+- Model must be successfully loaded or service returns error
+- /predict endpoint requires valid model
 """
 
 import logging
@@ -65,38 +70,56 @@ class SimpleConvNet(nn.Module):
 
 
 class ModelInference:
-    """Handle model loading and inference."""
+    """Handle model loading and inference in STRICT MODE."""
 
     def __init__(self, model_path: Optional[str] = None, device: Optional[str] = None):
         """
         Initialize model inference.
 
+        STRICT MODE: Model must be successfully loaded or initialization fails.
+
         Args:
-            model_path: Path to saved model (optional)
+            model_path: Path to saved model (required in production)
             device: Device to run model on ('cpu' or 'cuda')
+
+        Raises:
+            RuntimeError: If model_path not provided or model fails to load
         """
         self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         self.model = None
-        self.model_version = "stub-0.1 (demo mode)"
-        self.is_stub_model = True
+        self.model_version = None
+        self.is_ready = False
+        self.error_message = None
 
-        if model_path:
-            if Path(model_path).exists():
-                self.load_model(model_path)
-            else:
-                logger.warning(f"Model path provided but not found: {model_path}. Using stub model.")
-                self._create_stub_model()
-        else:
-            logger.info("No MODEL_PATH environment variable set. Using stub model for demo.")
-            self._create_stub_model()
+        # ✅ 嚴格模式：沒有 model_path 直接失敗
+        if not model_path:
+            error_msg = (
+                "MODEL_PATH environment variable not set. "
+                "Strict mode requires a valid model path. "
+                "Service cannot start without a trained model."
+            )
+            logger.error(error_msg)
+            self.error_message = error_msg
+            self.is_ready = False
+            return
 
-    def _create_stub_model(self) -> None:
-        """Create a stub model for testing."""
-        self.model = SimpleConvNet(input_channels=1, num_classes=2)
-        self.model.to(self.device)
-        self.model.eval()
-        self.is_stub_model = True
-        logger.info("Created stub CNN model (demo mode - random predictions)")
+        # ✅ 嚴格模式：model_path 不存在直接失敗
+        if not Path(model_path).exists():
+            error_msg = f"Model file not found at {model_path}. Service cannot start."
+            logger.error(error_msg)
+            self.error_message = error_msg
+            self.is_ready = False
+            return
+
+        # ✅ 嚴格模式：model load 失敗直接失敗
+        try:
+            self.load_model(model_path)
+            self.is_ready = True
+        except Exception as e:
+            error_msg = f"Failed to load model: {str(e)}"
+            logger.error(error_msg)
+            self.error_message = error_msg
+            self.is_ready = False
 
     def load_model(self, model_path: str) -> None:
         """
@@ -123,7 +146,7 @@ class ModelInference:
 
             # ✅ 改進：支援多種 checkpoint 格式
             state_dict = None
-            
+
             if isinstance(loaded, dict):
                 # 檢查常見的 checkpoint key
                 checkpoint_keys = [
@@ -131,14 +154,14 @@ class ModelInference:
                     "state_dict",        # PyTorch Lightning 格式
                     "model",             # 另一種常見格式
                 ]
-                
+
                 # 嘗試找到 state_dict
                 for key in checkpoint_keys:
                     if key in loaded:
                         state_dict = loaded[key]
                         logger.info(f"Found state_dict under key '{key}'")
                         break
-                
+
                 # 如果沒找到特定 key，檢查是否整個 dict 就是 state_dict
                 if state_dict is None:
                     # 檢查 dict 的 value 是否都是 tensor（state_dict 的特徵）
@@ -151,11 +174,10 @@ class ModelInference:
                         self.model = loaded
                         self.model.to(self.device)
                         self.model.eval()
-                        self.is_stub_model = False
                         self.model_version = "trained-1.0"
                         logger.info(f"Successfully loaded model from {model_path}")
                         return
-                
+
                 # 加載 state_dict
                 if state_dict is not None:
                     logger.info("Loading model from state_dict")
@@ -168,21 +190,19 @@ class ModelInference:
 
             self.model.to(self.device)
             self.model.eval()
-            self.is_stub_model = False
             self.model_version = "trained-1.0"
 
             logger.info(f"Successfully loaded model from {model_path}")
 
-        except FileNotFoundError:
-            logger.error(f"Model file not found: {model_path}. Using stub model.")
-            self._create_stub_model()
+        except FileNotFoundError as e:
+            logger.error(f"Model file not found: {model_path}")
+            raise
         except Exception as e:
             logger.error(
                 f"Failed to load model: {str(e)}. "
-                f"Ensure the file is a valid PyTorch model, state_dict, or checkpoint. "
-                f"Using stub model instead."
+                f"Ensure the file is a valid PyTorch model, state_dict, or checkpoint."
             )
-            self._create_stub_model()
+            raise RuntimeError(f"Model loading failed: {str(e)}")
 
     def predict(self, features: np.ndarray) -> Tuple[str, float]:
         """
@@ -197,10 +217,15 @@ class ModelInference:
             - probability: confidence score (0-1)
 
         Raises:
+            RuntimeError: If model not ready
             ValueError: If features have invalid shape
         """
-        if self.model is None:
-            raise RuntimeError("Model not initialized")
+        # ✅ 嚴格模式：model 不 ready 直接拒絕
+        if not self.is_ready or self.model is None:
+            raise RuntimeError(
+                "Model not ready. Service cannot process predictions. "
+                f"Error: {self.error_message}"
+            )
 
         try:
             # Ensure features are in correct format
@@ -225,10 +250,7 @@ class ModelInference:
 
             label = "positive" if pred_class == 1 else "negative"
 
-            if self.is_stub_model:
-                logger.info(f"Stub prediction: {label} (random - demo mode)")
-            else:
-                logger.info(f"Prediction: {label} (confidence: {confidence:.2%})")
+            logger.info(f"Prediction: {label} (confidence: {confidence:.2%})")
 
             return label, float(confidence)
 
@@ -238,21 +260,35 @@ class ModelInference:
 
     def predict_batch(self, features_list: list) -> list:
         """
-        Make predictions on multiple samples.
+        Make batch predictions.
 
         Args:
-            features_list: List of feature arrays
+            features_list: List of audio features
 
         Returns:
             List of (label, probability) tuples
         """
+        # ✅ 嚴格模式：model 不 ready 直接拒絕
+        if not self.is_ready or self.model is None:
+            raise RuntimeError("Model not ready for batch prediction")
+
         results = []
         for features in features_list:
-            label, prob = self.predict(features)
-            results.append((label, prob))
+            label, confidence = self.predict(features)
+            results.append({"label": label, "confidence": confidence})
+
         return results
 
+    def get_status(self) -> Dict:
+        """
+        Get model status for health checks.
 
-def create_model_inference(model_path: Optional[str] = None) -> ModelInference:
-    """Factory function to create model inference."""
-    return ModelInference(model_path=model_path)
+        Returns:
+            Dict with model status information
+        """
+        return {
+            "is_ready": self.is_ready,
+            "model_version": self.model_version,
+            "device": self.device,
+            "error": self.error_message,
+        }

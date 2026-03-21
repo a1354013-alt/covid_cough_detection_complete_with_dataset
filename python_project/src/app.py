@@ -16,8 +16,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import uvicorn
 
-from audio_processor import AudioProcessor
-from model_inference import ModelInference
+from .audio_processor import AudioProcessor
+from .model_inference import ModelInference
 
 # ============================================================================
 # Logging Setup
@@ -78,7 +78,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="COVID-19 Cough Detection API",
     description="AI-powered COVID-19 detection from cough audio",
-    version="1.0.0",
+    version="1.0.13",
     lifespan=lifespan,
 )
 
