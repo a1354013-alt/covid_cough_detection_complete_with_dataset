@@ -275,7 +275,7 @@ async def root():
     """Root endpoint with API information."""
     return {
         "name": "COVID-19 Cough Detection API",
-        "version": "1.0.0",
+        "version": APP_VERSION,
         "endpoints": {
             "health": "/health",
             "version": "/version",

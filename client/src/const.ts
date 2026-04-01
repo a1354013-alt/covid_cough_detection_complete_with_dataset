@@ -1,6 +1,6 @@
 // App configuration
 export const APP_NAME = "COVID-19 Cough Detection";
-export const APP_VERSION = "1.0.13";
+// APP_VERSION is injected at build time from shared/version.ts
 
 // Shared constants
 export const COOKIE_NAME = "app_session_id";

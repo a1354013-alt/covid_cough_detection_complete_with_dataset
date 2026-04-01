@@ -1,4 +1,4 @@
-import { APP_VERSION } from "./version.js";
+import { APP_VERSION } from "../../shared/version.js";
 import express, { Request, Response, NextFunction } from "express";
 import { createServer } from "http";
 import path from "path";

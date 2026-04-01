@@ -139,7 +139,6 @@ env/
 .python-version
 
 # Project specific
-pnpm-lock.yaml
 .vite/
 .next/
 .nuxt/

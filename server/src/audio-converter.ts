@@ -3,12 +3,16 @@
  * 
  * Converts various audio formats to WAV for consistent Python backend processing.
  * This ensures:
- * - Frontend can record in any supported format (WebM, MP4, etc.)
+ * - Frontend can record in any supported format (WebM, OGG, etc.)
  * - Backend always receives WAV for stable processing
  * - No format compatibility issues between Node and Python
  * 
- * STRICT MODE: Uses async APIs and fails fast if conversion unavailable.
- * No fallback to unconverted formats - ensures system contract is maintained.
+ * STRICT MODE: Conversion is mandatory for non-WAV formats.
+ * - If ffmpeg unavailable: rejects request (no fallback)
+ * - If conversion fails: rejects request (no fallback)
+ * - Only WAV format accepted by backend
+ * 
+ * This maintains strict system contract: non-WAV formats must convert or fail.
  */
 
 import { exec } from "child_process";

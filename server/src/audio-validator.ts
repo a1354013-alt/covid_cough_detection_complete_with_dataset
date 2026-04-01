@@ -21,9 +21,6 @@ const AUDIO_MAGIC_BYTES: Record<string, Uint8Array> = {
   mp3_id3: new Uint8Array([0x49, 0x44, 0x33]), // "ID3"
   mp3_frame_sync: new Uint8Array([0xff]), // MPEG Frame sync first byte
   
-  // M4A/AAC: ftyp (MP4 format)
-  m4a: new Uint8Array([0x66, 0x74, 0x79, 0x70]), // "ftyp"
-  
   // OGG: OggS
   ogg: new Uint8Array([0x4f, 0x67, 0x67, 0x53]), // "OggS"
   
@@ -40,16 +37,7 @@ const FORMAT_TO_EXTENSIONS: Record<string, string[]> = {
   webm: ["webm"],
 };
 
-// ✅ 新增：MP4 ftyp brand 白名單（只接受音訊容器）
-const AUDIO_FTYP_BRANDS = new Set([
-  "isom", // ISO Base Media File Format
-  "iso2", // ISO Base Media File Format v2
-  "mp42", // MPEG-4 Part 14
-  "M4A ", // iTunes M4A
-  "M4B ", // iTunes M4B (audiobook)
-  "M4P ", // iTunes M4P (protected)
-  "mp41", // MPEG-4 Part 14
-]);
+// ✅ v1.0.13: M4A/MP4 formats not supported - removed whitelist
 
 interface AudioValidationResult {
   valid: boolean;
@@ -92,42 +80,7 @@ function isMP3FrameSync(buffer: Buffer): boolean {
   return validSecondBytes.includes(secondByte);
 }
 
-/**
- * ✅ 改進：驗證 M4A/MP4 是否為音訊容器
- * 檢查 ftyp brand 以確保不是影片容器
- * 
- * ✅ v1.0.13: 生產環境嚴格模式
- * - 只接受白名單中的 brand
- * - 開發環境可寬容處理未知 brand
- */
-function isAudioM4A(buffer: Buffer): boolean {
-  // M4A/MP4 結構：offset 4 是 "ftyp"
-  if (buffer.length < 12) return false;
-  
-  if (!bufferStartsWith(buffer.slice(4), AUDIO_MAGIC_BYTES.m4a)) {
-    return false;
-  }
-  
-  // ✅ 檢查 ftyp brand（offset 8，4 bytes）
-  // 只接受已知的音訊 brand
-  const brand = buffer.toString("ascii", 8, 12);
-  const isProduction = process.env.NODE_ENV === "production";
-  
-  // 白名單檢查
-  if (AUDIO_FTYP_BRANDS.has(brand) || brand.startsWith("M4")) {
-    return true;
-  }
-  
-  // 生產環境：嚴格拒絕未知 brand
-  if (isProduction) {
-    console.warn(`[AUDIO-VALIDATOR] Rejected unknown MP4 ftyp brand in production: ${brand}`);
-    return false;
-  }
-  
-  // 開發環境：寬容處理未知 brand（便於測試）
-  console.warn(`[AUDIO-VALIDATOR] Unknown MP4 ftyp brand (dev mode): ${brand}`);
-  return true;
-}
+// ✅ v1.0.13: M4A/MP4 formats not supported - isAudioM4A function removed
 
 /**
  * Detect audio format from magic bytes
@@ -151,11 +104,6 @@ export function detectAudioFormat(buffer: Buffer): string | null {
   // ✅ 改進：檢查 MP3 frame sync 的所有標準變體
   if (isMP3FrameSync(buffer)) {
     return "mp3";
-  }
-
-  // ✅ 改進：驗證 M4A 是否為音訊容器
-  if (isAudioM4A(buffer)) {
-    return "m4a";
   }
 
   // Check OGG
@@ -273,7 +221,6 @@ export function estimateAudioDuration(
   const typicalBitrates: Record<string, number> = {
     wav: 1411, // 16-bit, 44.1kHz stereo = 1411 kbps
     mp3: 128, // Typical MP3 bitrate
-    m4a: 128, // Typical AAC bitrate
     ogg: 128, // Typical Vorbis bitrate
     webm: 128, // Typical WebM bitrate
   };

@@ -85,8 +85,7 @@ GET /version
 Response:
 ```json
 {
-  "api_version": "1.0.0",
-  "model_version": "stub-0.1",
+  "version": "1.0.13",
   "timestamp": "2026-03-02T03:00:00.000000"
 }
 ```
@@ -104,12 +103,12 @@ Response:
 {
   "label": "positive",
   "prob": 0.85,
-  "model_version": "stub-0.1",
+  "model_version": "1.0.13",
   "processing_time_ms": 1234.5
 }
 ```
 
-Supported audio formats: WAV, MP3, WebM, M4A, OGG, FLAC
+Supported audio formats: WAV, MP3, WebM, OGG
 
 ## 🏗️ Project Structure
 
@@ -344,5 +343,5 @@ For issues and questions:
 
 ---
 
-**Version**: 1.0.0  
-**Last Updated**: March 2, 2026
+**Version**: 1.0.13  
+**Last Updated**: April 1, 2026
