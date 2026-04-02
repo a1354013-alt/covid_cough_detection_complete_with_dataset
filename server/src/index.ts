@@ -1,4 +1,4 @@
-import { APP_VERSION } from "../../shared/version.js";
+import { APP_VERSION } from "./config/version.js";
 import express, { Request, Response, NextFunction } from "express";
 import { createServer } from "http";
 import path from "path";
@@ -151,16 +151,29 @@ async function parseMultipart(req: Request): Promise<ParseMultipartResult> {
     let hasError = false; // Track if error occurred
 
     // Timeout protection
-    // ✅ 改進：timeout 時不直接 destroy，改為標記 error 並讓 Busboy 正常清理
+    // ✅ 改進：timeout 時立即 destroy 與 unpipe，避免半開連線
     const timeoutHandle = setTimeout(() => {
       if (!resolved) {
         hasError = true;
-        // 不直接 destroy，讓 Busboy 正常關閉
+        // Immediately destroy busboy and unpipe request
+        try {
+          bb.destroy();
+          req.unpipe(bb);
+        } catch {
+          // Ignore errors during cleanup
+        }
+        resolved = true;
+        resolve({
+          error: "Request timeout",
+          details: "Upload timeout",
+        });
       }
     }, REQUEST_TIMEOUT);
 
+    let bb: any; // Declare bb outside try block for timeout handler
+
     try {
-      const bb = Busboy({ headers: req.headers });
+      bb = Busboy({ headers: req.headers });
 
       // ✅ 改進：使用正確的型別而不是 any
       bb.on("file", (fieldname: string, file: any, info: FileInfo) => {
@@ -179,7 +192,7 @@ async function parseMultipart(req: Request): Promise<ParseMultipartResult> {
         let fileSize = 0;
 
         file.on("data", (chunk: Buffer) => {
-          // ✅ 改進：檢查是否已經超時或出錯
+          // Check if already timed out or resolved
           if (hasError || resolved) {
             file.destroy();
             return;
@@ -527,31 +540,35 @@ async function startServer() {
     mimeType: string
   ): Promise<PredictionResponse | null> {
     try {
-      // ✅ 音訊格式轉換邏輯
+      // Audio format conversion logic
       let convertedBuffer = fileBuffer;
       let actualMimeType = mimeType;
+      let actualFilename = filename;
 
-      // 嘗試轉換為 WAV
+      // Try to convert to WAV
       try {
         convertedBuffer = await convertToWav(fileBuffer, mimeType);
         actualMimeType = "audio/wav";
+        // Update filename extension to .wav
+        actualFilename = filename.replace(/\.[^.]+$/, ".wav");
         logger.info("Audio format conversion successful", {
           source: mimeType,
           target: "audio/wav",
+          filename: actualFilename,
         });
       } catch (conversionError) {
-        // ✅ 轉換失敗時：保持原始格式，不要偽裝
+        // Conversion failed: keep original format, don't fake
         logger.warn("Audio format conversion failed, using original format", {
           source: mimeType,
           error: conversionError instanceof Error ? conversionError.message : String(conversionError),
         });
-        // 保持原始 buffer 和 MIME type
+        // Keep original buffer and MIME type
         actualMimeType = mimeType;
       }
 
       const formData = new FormData();
       const blob = new Blob([convertedBuffer], { type: actualMimeType });
-      formData.append("file", blob, filename);
+      formData.append("file", blob, actualFilename);
 
       const response = await fetch(`${PYTHON_API_URL}/predict`, {
         method: "POST",

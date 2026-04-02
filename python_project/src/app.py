@@ -84,7 +84,6 @@ app = FastAPI(
 )
 
 # ✅ CORS configuration from environment
-import os
 ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "*").split(",")
 
 # Add CORS middleware
@@ -144,22 +143,28 @@ class ErrorResponse(BaseModel):
 # ============================================================================
 
 
-@app.get("/health", response_model=HealthResponse)
-async def health_check():
+@app.get("/healthz")
+async def healthz():
     """
-    Health check endpoint - returns real model status.
-    
-    Returns:
-    - 200 OK: Model is loaded and ready
-    - 503 Service Unavailable: Model is not ready
-    
-    Used by Docker/K8s health checks to determine if container is ready.
+    Liveness probe - returns 200 if process is alive.
+    Does NOT check model status.
     """
-    # ✅ 使用 model_inference.get_status() 獲取真實狀態
+    return {
+        "status": "alive",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@app.get("/readyz")
+async def readyz():
+    """
+    Readiness probe - returns 200 only if model is ready.
+    Returns 503 if model is not loaded.
+    """
     status = model_inference.get_status()
     
     response_data = {
-        "status": "ok" if status["is_ready"] else "degraded",
+        "status": "ready" if status["is_ready"] else "not_ready",
         "model_loaded": status["is_ready"],
         "model_version": status["model_version"],
         "device": status["device"],
@@ -167,7 +172,6 @@ async def health_check():
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     
-    # ✅ 後端不準備時回傳 503，不是 200
     if not status["is_ready"]:
         raise HTTPException(
             status_code=503,
@@ -175,6 +179,14 @@ async def health_check():
         )
     
     return response_data
+
+
+@app.get("/health", response_model=HealthResponse)
+async def health_check():
+    """
+    Legacy health endpoint - redirects to /readyz for backward compatibility.
+    """
+    return await readyz()
 
 
 @app.get("/version", response_model=VersionResponse)

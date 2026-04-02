@@ -258,9 +258,6 @@ export function getAudioFileName(mimeType: string): string {
   if (mimeType.includes("audio/mpeg")) {
     return `cough-${timestamp}.mp3`;
   }
-  if (mimeType.includes("audio/mp4")) {
-    return `cough-${timestamp}.mp4`;
-  }
   if (mimeType.includes("audio/wav")) {
     return `cough-${timestamp}.wav`;
   }
