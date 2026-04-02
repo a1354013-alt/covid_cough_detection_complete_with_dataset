@@ -261,6 +261,9 @@ export function getAudioFileName(mimeType: string): string {
   if (mimeType.includes("audio/wav")) {
     return `cough-${timestamp}.wav`;
   }
+  if (mimeType.includes("audio/ogg")) {
+    return `cough-${timestamp}.ogg`;
+  }
 
   // Default to WebM
   return `cough-${timestamp}.webm`;

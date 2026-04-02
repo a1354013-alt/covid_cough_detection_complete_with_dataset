@@ -1,4 +1,3 @@
-import { APP_VERSION } from "./config/version.js";
 import express, { Request, Response, NextFunction } from "express";
 import { createServer } from "http";
 import path from "path";
@@ -20,6 +19,7 @@ interface PredictionResponse {
   label: "positive" | "negative";
   prob: number;
   model_version: string;
+  processing_time_ms: number;
 }
 
 interface ErrorResponse {
@@ -99,54 +99,38 @@ function checkRateLimit(req: Request): boolean {
 // Cleanup expired rate limit entries
 function cleanupRateLimitMap(): void {
   const now = Date.now();
-  let cleaned = 0;
+  const entriesToDelete: string[] = [];
 
-  const keysToDelete: string[] = [];
-  rateLimitMap.forEach((entry, key) => {
+  for (const [key, entry] of rateLimitMap.entries()) {
     if (now > entry.resetTime) {
-      keysToDelete.push(key);
-      cleaned++;
+      entriesToDelete.push(key);
     }
-  });
-
-  keysToDelete.forEach((key) => {
-    rateLimitMap.delete(key);
-  });
-
-  if (cleaned > 0) {
-    logger.debug("Rate limit cleanup", { cleaned, remaining: rateLimitMap.size });
   }
+
+  for (const key of entriesToDelete) {
+    rateLimitMap.delete(key);
+  }
+
+  logger.debug(`Cleaned up ${entriesToDelete.length} expired rate limit entries`);
 }
 
 // Start cleanup interval
-// ✅ 修正：使用 unref() 讓 process 可以優雅退出
-// 不會因為 interval 還在執行就阻止 process 關閉
-const cleanupInterval = setInterval(cleanupRateLimitMap, RATE_LIMIT_CLEANUP_INTERVAL);
-cleanupInterval.unref(); // 不阻止 process 退出
+setInterval(cleanupRateLimitMap, RATE_LIMIT_CLEANUP_INTERVAL);
 
 // ============================================================================
-// Multipart Parser with Size Limit
+// Multipart Form Data Parser
 // ============================================================================
 
-/**
- * Parse multipart form data using Busboy
- * Streams multipart parsing with size limit enforcement.
- * - Only accepts the first audio/file field (subsequent files are ignored)
- * - Enforces 10MB size limit per file
- * - Currently buffers file content in memory
- * Future optimization: Stream directly to Python backend or temp file.
- */
-async function parseMultipart(req: Request): Promise<ParseMultipartResult> {
+function parseMultipart(req: Request): Promise<ParseMultipartResult> {
   return new Promise((resolve) => {
-    const contentType = req.get("content-type") || "";
-
-    if (!contentType.includes("multipart/form-data")) {
+    // Check Content-Type
+    const contentType = req.headers["content-type"];
+    if (!contentType || !contentType.includes("multipart/form-data")) {
       resolve({ error: "Content-Type must be multipart/form-data" });
       return;
     }
 
     let resolved = false;
-    let totalBytes = 0; // Track total bytes received (for safety)
     let fileReceived = false; // Track if we already received a file
     let hasError = false; // Track if error occurred
 
@@ -216,7 +200,6 @@ async function parseMultipart(req: Request): Promise<ParseMultipartResult> {
           }
 
           chunks.push(chunk);
-          totalBytes += chunk.length; // Track total for safety
         });
 
         file.on("end", () => {
@@ -307,31 +290,6 @@ async function parseMultipart(req: Request): Promise<ParseMultipartResult> {
 
 async function startServer() {
   const app = express();
-  const server = createServer(app);
-
-  // Trust proxy - set based on environment
-  // In production behind a proxy, set to 1 (or number of proxy hops)
-  // Can be configured via TRUST_PROXY env var
-  // ✅ 修正：Trust proxy 設定要明確 parse
-  // 避免字串 "false" 被當成 truthy
-  let trustProxy: boolean | number = false;
-  if (process.env.TRUST_PROXY) {
-    const envValue = process.env.TRUST_PROXY.toLowerCase();
-    if (envValue === "true" || envValue === "1") {
-      trustProxy = true;
-    } else if (envValue === "false" || envValue === "0") {
-      trustProxy = false;
-    } else {
-      // 嘗試解析為數字（proxy 層數）
-      const parsed = parseInt(process.env.TRUST_PROXY, 10);
-      trustProxy = !isNaN(parsed) ? parsed : false;
-    }
-  } else {
-    // 預設值
-    trustProxy = isDev ? false : 1;
-  }
-  app.set("trust proxy", trustProxy);
-  logger.info("Trust proxy setting", { trust_proxy: trustProxy });
 
   // Middleware
   app.use(express.json());
@@ -341,6 +299,14 @@ async function startServer() {
   // ✅ CORS configuration from environment
   const ALLOWED_ORIGINS_STR = process.env.ALLOWED_ORIGINS || (isDev ? "*" : "https://your-domain");
   const ALLOWED_ORIGINS_LIST = ALLOWED_ORIGINS_STR === "*" ? ["*"] : ALLOWED_ORIGINS_STR.split(",").map(o => o.trim());
+  
+  // ⚠️ Production CORS warning
+  if (!isDev && !process.env.ALLOWED_ORIGINS) {
+    logger.warn(
+      "CORS_PRODUCTION_WARNING: ALLOWED_ORIGINS not set in production. Using default 'https://your-domain'. " +
+      "Please set ALLOWED_ORIGINS environment variable to your actual domain(s) for security."
+    );
+  }
   
   app.use((req: Request, res: Response, next: NextFunction) => {
     // ✅ CORS headers - properly handle multiple origins
@@ -367,95 +333,153 @@ async function startServer() {
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "DENY");
     res.setHeader("X-XSS-Protection", "1; mode=block");
-    // Only set HSTS in production with HTTPS (or when behind HTTPS proxy)
-    // req.protocol respects trust proxy setting
-    const isSecure = !isDev && req.protocol === "https";
-    if (isSecure) {
-      res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
-    }
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
 
-    // Build CSP with support for Python backend (supports http/https and ws/wss)
-    const pythonUrl = new URL(PYTHON_API_URL);
-    const pythonHost = pythonUrl.host;
-    const isHttps = pythonUrl.protocol === "https:";
-    const httpProtocol = isHttps ? "https" : "http";
-    const wsProtocol = isHttps ? "wss" : "ws";
-    
-    // Allow extra connect sources via environment variable (e.g., for Sentry, analytics)
-    const extraConnectSrc = process.env.CSP_CONNECT_SRC_EXTRA || "";
-    const connectSrcList = ["'self'", `${httpProtocol}://${pythonHost}`, `${wsProtocol}://${pythonHost}`];
-    if (extraConnectSrc) {
-      connectSrcList.push(...extraConnectSrc.split(",").map(s => s.trim()));
-    }
-    const connectSrc = connectSrcList.join(" ");
-    
+    // CSP header
     res.setHeader(
       "Content-Security-Policy",
-      "default-src 'self'; " +
-        "img-src 'self' data: blob:; " +
-        "media-src 'self' blob:; " +
-        "style-src 'self' 'unsafe-inline'; " +
-        "script-src 'self'; " +
-        `connect-src ${connectSrc}`
+      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
     );
 
     next();
   });
 
-  // OPTIONS handler for preflight requests
-  app.options("*", (_req: Request, res: Response) => {
-    res.status(200).end();
-  });
+  // ============================================================================
+  // Health Check Endpoints
+  // ============================================================================
 
-  // Request logging middleware
-  app.use((req: Request, res: Response, next: NextFunction) => {
-    const startTime = Date.now();
-
-    res.on("finish", () => {
-      const duration = Date.now() - startTime;
-      logger.logResponse(req.method, req.path, res.statusCode, duration);
+  /**
+   * GET /api/healthz (Liveness Probe)
+   * 
+   * Returns 200 if Node.js process is alive.
+   * Does NOT check Python backend or model status.
+   * Used by Docker/K8s to determine if process should be restarted.
+   */
+  app.get("/api/healthz", (_req: Request, res: Response): void => {
+    res.json({
+      status: "alive",
+      timestamp: new Date().toISOString(),
+      service: "covid-cough-detection-api",
+      version: "1.0.13",
     });
-
-    next();
   });
 
-  // Rate limiting middleware
-  app.use((req: Request, res: Response, next: NextFunction) => {
-    if (!checkRateLimit(req)) {
-      logger.warn("Rate limit exceeded", {
-        ip: getRateLimitKey(req),
-        path: req.path,
+  /**
+   * GET /api/readyz (Readiness Probe)
+   * 
+   * Returns 200 only if Node.js AND Python backend AND model are ready.
+   * Used by Docker/K8s to determine if service can accept traffic.
+   * Calls Python /readyz endpoint to check model readiness.
+   * Returns 503 if any dependency is unavailable.
+   */
+  app.get("/api/readyz", async (_req: Request, res: Response): Promise<void> => {
+    try {
+      // Check Python backend readiness (not just liveness)
+      const pythonReadyzResponse = await fetch(`${PYTHON_API_URL}/readyz`, {
+        signal: AbortSignal.timeout(5000),
       });
-      res.status(429).json({
-        error: "Too many requests",
-        details: "Please wait before making another request",
-      } as ErrorResponse);
-      return;
+
+      // ✅ Parse Python readyz response to check model_loaded and get full status
+      const pythonReadyz = (await pythonReadyzResponse.json()) as Record<string, unknown>;
+      const modelLoaded = pythonReadyz.model_loaded === true;
+
+      if (!pythonReadyzResponse.ok) {
+        // Python backend returned 503, meaning model is not ready
+        res.status(503).json({
+          status: "not_ready",
+          timestamp: new Date().toISOString(),
+          python_backend: "started",
+          model_loaded: modelLoaded,
+          reason: pythonReadyz.error || "Model not ready in Python backend",
+        });
+        return;
+      }
+
+      // Python backend returned 200, model is ready
+      res.json({
+        status: "ready",
+        timestamp: new Date().toISOString(),
+        python_backend: "ok",
+        model_loaded: true,
+      });
+    } catch (err) {
+      // Python service is unreachable (network error, timeout, etc.)
+      const errorMessage = err instanceof Error ? err.message : "Unknown error";
+      res.status(503).json({
+        status: "not_ready",
+        timestamp: new Date().toISOString(),
+        python_backend: "unreachable",
+        reason: `Python backend unreachable: ${errorMessage}`,
+      });
     }
-    next();
   });
 
-  // ========================================================================
-  // API Routes
-  // ========================================================================
+  /**
+   * GET /api/health (Deprecated - for backward compatibility)
+   * 
+   * Use /api/healthz for liveness or /api/readyz for readiness.
+   */
+  app.get("/api/health", async (_req: Request, res: Response): Promise<void> => {
+    try {
+      const pythonHealthResponse = await fetch(`${PYTHON_API_URL}/health`, {
+        signal: AbortSignal.timeout(5000),
+      });
+
+      if (!pythonHealthResponse.ok) {
+        res.status(503).json({
+          status: "unhealthy",
+          timestamp: new Date().toISOString(),
+          python_backend: "unavailable",
+          reason: "Python backend is not responding",
+        });
+        return;
+      }
+
+      res.json({
+        status: "ok",
+        timestamp: new Date().toISOString(),
+        python_backend: "ok",
+      });
+    } catch (err) {
+      res.status(503).json({
+        status: "unhealthy",
+        timestamp: new Date().toISOString(),
+        python_backend: "unavailable",
+        reason: err instanceof Error ? err.message : "Unknown error",
+      });
+    }
+  });
+
+  // ============================================================================
+  // Prediction Endpoint
+  // ============================================================================
 
   /**
    * POST /api/predict
-   *
+   * 
    * Proxies audio prediction to Python backend or uses local inference
    */
   app.post("/api/predict", async (req: Request, res: Response): Promise<void> => {
     const startTime = Date.now();
 
     try {
+      // Rate limiting
+      if (!checkRateLimit(req)) {
+        res.status(429).json({
+          error: "Too many requests",
+          details: isDev ? `Rate limit exceeded: ${RATE_LIMIT_MAX_REQUESTS} requests per minute` : undefined,
+        } as ErrorResponse);
+        return;
+      }
+
       // Parse multipart form data
-      const { file, filename, mimeType, error: parseError } = await parseMultipart(req);
+      const { file, filename, mimeType, error: parseError, details: parseDetails } = await parseMultipart(req);
 
       if (parseError) {
-        logger.warn("Multipart parse error", { error: parseError });
+        logger.warn("Multipart parse error", { error: parseError, details: parseDetails });
         res.status(400).json({
           error: parseError,
-          details: isDev ? "Check server logs for details" : undefined,
+          details: isDev ? parseDetails : undefined,
         } as ErrorResponse);
         return;
       }
@@ -524,14 +548,13 @@ async function startServer() {
 
       res.status(500).json({
         error: "Internal server error",
-        details:
-          isDev && err instanceof Error ? err.message : undefined,
+        details: isDev ? (err instanceof Error ? err.message : String(err)) : undefined,
       } as ErrorResponse);
     }
   });
 
   /**
-   * Forward request to Python backend with correct MIME type
+   * Forward prediction request to Python backend
    * ✅ 修正：在轉送前轉換音訊格式為 WAV
    */
   async function forwardToPythonBackend(
@@ -588,6 +611,7 @@ async function startServer() {
       logger.info("Python backend prediction successful", {
         label: data.label,
         prob: data.prob,
+        processing_time_ms: data.processing_time_ms,
       });
       return data;
     } catch (err) {
@@ -599,119 +623,14 @@ async function startServer() {
     }
   }
 
-  // ✅ generateStubPrediction 已移除
-  // 原因：醫療應用不應該在模型服務不可用時返回隨機結果
-  // 改為返回 503 Service Unavailable
-
-  /**
-   * GET /api/healthz (Liveness Probe)
-   * 
-   * Returns 200 if Node.js server is running.
-   * Used by Docker/K8s to determine if container should be restarted.
-   * Does NOT check Python backend or model status.
-   */
-  app.get("/api/healthz", (_req: Request, res: Response): void => {
-    res.json({
-      status: "alive",
-      timestamp: new Date().toISOString(),
-      service: "covid-cough-detection-api",
-      version: APP_VERSION,
-    });
-  });
-
-  /**
-   * GET /api/readyz (Readiness Probe)
-   * 
-   * Returns 200 only if Node.js AND Python backend AND model are ready.
-   * Used by Docker/K8s to determine if service can accept traffic.
-   * Returns 503 if any dependency is unavailable.
-   */
-  app.get("/api/readyz", async (_req: Request, res: Response): Promise<void> => {
-    try {
-      // Check Python backend health
-      const pythonHealthResponse = await fetch(`${PYTHON_API_URL}/health`, {
-        signal: AbortSignal.timeout(5000),
-      });
-
-      if (!pythonHealthResponse.ok) {
-        res.status(503).json({
-          status: "not_ready",
-          timestamp: new Date().toISOString(),
-          python_backend: "unavailable",
-          reason: "Python backend is not responding",
-        });
-        return;
-      }
-
-      // ✅ Parse Python health response to check model_loaded
-      const pythonHealth = (await pythonHealthResponse.json()) as Record<string, unknown>;
-      const modelLoaded = pythonHealth.model_loaded === true;
-
-      if (!modelLoaded) {
-        res.status(503).json({
-          status: "not_ready",
-          timestamp: new Date().toISOString(),
-          python_backend: "ok",
-          model_loaded: false,
-          reason: "Model not loaded in Python backend",
-        });
-        return;
-      }
-
-      res.json({
-        status: "ready",
-        timestamp: new Date().toISOString(),
-        python_backend: "ok",
-        model_loaded: true,
-      });
-    } catch (err) {
-      res.status(503).json({
-        status: "not_ready",
-        timestamp: new Date().toISOString(),
-        python_backend: "unavailable",
-        reason: err instanceof Error ? err.message : "Unknown error",
-      });
-    }
-  });
-
-  /**
-   * GET /api/health (Deprecated - for backward compatibility)
-   * 
-   * Use /api/healthz for liveness or /api/readyz for readiness.
-   */
-  app.get("/api/health", async (_req: Request, res: Response): Promise<void> => {
-    try {
-      const pythonHealthResponse = await fetch(`${PYTHON_API_URL}/health`, {
-        signal: AbortSignal.timeout(5000),
-      });
-
-      if (!pythonHealthResponse.ok) {
-        res.status(503).json({
-          status: "unhealthy",
-          timestamp: new Date().toISOString(),
-          python_backend: "unavailable",
-          reason: "Python backend is not responding",
-        });
-        return;
-      }
-
-      res.json({
-        status: "ok",
-        timestamp: new Date().toISOString(),
-        python_backend: "ok",
-      });
-    } catch (err) {
-      res.status(503).json({
-        status: "unhealthy",
-        timestamp: new Date().toISOString(),
-        python_backend: "unavailable",
-        reason: err instanceof Error ? err.message : "Unknown error",
-      });
-    }
-  });
+  // ============================================================================
+  // Version Endpoint
+  // ============================================================================
 
   /**
    * GET /api/version
+   * 
+   * Returns API version and model information
    */
   app.get("/api/version", async (_req: Request, res: Response): Promise<void> => {
     try {
@@ -719,79 +638,70 @@ async function startServer() {
         signal: AbortSignal.timeout(5000),
       });
 
-      if (pythonVersionResponse.ok) {
-        const pythonVersion = await pythonVersionResponse.json();
-        res.json({
-          api_version: APP_VERSION,
-          model_version: (pythonVersion as Record<string, unknown>).model_version || "unknown",
-          python_backend: "connected",
-          timestamp: new Date().toISOString(),
+      if (!pythonVersionResponse.ok) {
+        res.status(503).json({
+          error: "Python backend unavailable",
+          details: isDev ? "Could not fetch version information from Python backend" : undefined,
         });
         return;
       }
-    } catch {
-      // Fall through to default response
+
+      const pythonVersion = (await pythonVersionResponse.json()) as Record<string, unknown>;
+
+      res.json({
+        api_version: "1.0.13",
+        node_version: process.version,
+        python_backend: pythonVersion,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err) {
+      res.status(503).json({
+        error: "Version check failed",
+        details: isDev ? (err instanceof Error ? err.message : String(err)) : undefined,
+      });
     }
+  });
 
-    res.json({
-      api_version: APP_VERSION,
-      model_version: "unavailable",
-      python_backend: "unavailable",
-      timestamp: new Date().toISOString(),
+  // ============================================================================
+  // 404 Handler
+  // ============================================================================
+
+  app.use((_req: Request, res: Response): void => {
+    res.status(404).json({
+      error: "Not found",
+      details: isDev ? "The requested endpoint does not exist" : undefined,
     });
   });
 
-  // ========================================================================
-  // Static Files & SPA Fallback
-  // ========================================================================
+  // ============================================================================
+  // Server Startup
+  // ============================================================================
 
-  const staticPath = path.resolve(__dirname, "public");
-  app.use(express.static(staticPath));
+  const PORT = parseInt(process.env.PORT || "3001", 10);
+  const server = createServer(app);
 
-  // SPA fallback
-  app.get("*", (_req: Request, res: Response) => {
-    res.sendFile(path.join(staticPath, "index.html"));
-  });
-
-  // ========================================================================
-  // Error Handler
-  // ========================================================================
-
-  app.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
-    logger.error("Unhandled error", err);
-    res.status(500).json({
-      error: "Internal server error",
-      details: isDev ? err.message : undefined,
-    } as ErrorResponse);
-  });
-
-  // ========================================================================
-  // Start Server
-  // ========================================================================
-
-  const port = process.env.PORT || 3000;
-
-  server.listen(port, () => {
-    logger.info("Server started", {
-      port,
-      environment: isDev ? "development" : "production",
-      python_api_url: PYTHON_API_URL,
-    });
+  server.listen(PORT, "0.0.0.0", () => {
+    logger.info(`Server listening on port ${PORT}`);
   });
 
   // Graceful shutdown
   process.on("SIGTERM", () => {
-    logger.info("SIGTERM received, shutting down gracefully");
+    logger.info("SIGTERM signal received: closing HTTP server");
     server.close(() => {
-      logger.info("Server closed");
+      logger.info("HTTP server closed");
       process.exit(0);
     });
   });
 
-  return server;
+  process.on("SIGINT", () => {
+    logger.info("SIGINT signal received: closing HTTP server");
+    server.close(() => {
+      logger.info("HTTP server closed");
+      process.exit(0);
+    });
+  });
 }
 
-// Start server
 startServer().catch((err) => {
   logger.error("Failed to start server", err);
   process.exit(1);

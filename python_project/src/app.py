@@ -184,7 +184,7 @@ async def readyz():
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
     """
-    Legacy health endpoint - redirects to /readyz for backward compatibility.
+    Mirrors /readyz behavior for backward compatibility.
     """
     return await readyz()
 
