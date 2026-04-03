@@ -1,15 +1,11 @@
 import express, { Request, Response, NextFunction } from "express";
 import { createServer } from "http";
-import path from "path";
-import { fileURLToPath } from "url";
 import Busboy from "busboy";
 import type { FileInfo } from "busboy";
 import { validateAudioFile } from "./audio-validator.js";
 import { logger } from "./logger.js";
-import { convertToWav } from "./audio-converter.js"; // ✅ 音訊格式轉換
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { convertToWav } from "./audio-converter.js";
+import { API_VERSION } from "./config/version.js"; // ✅ Central version management
 
 // ============================================================================
 // Type Definitions
@@ -51,7 +47,22 @@ const RATE_LIMIT_MAX_REQUESTS = Math.max(
 );
 const RATE_LIMIT_CLEANUP_INTERVAL = 5 * 60 * 1000; // 5 minutes
 
+// ✅ Trust proxy configuration: dev=false, prod=1, env override
+const TRUST_PROXY = (() => {
+  const envValue = process.env.TRUST_PROXY;
+  if (envValue !== undefined) {
+    // Allow env override: "1", "true", "false", or specific proxy count
+    if (envValue === "true") return true;
+    if (envValue === "false") return false;
+    const num = parseInt(envValue, 10);
+    return isNaN(num) ? (isDev ? false : 1) : num;
+  }
+  // Default: false in dev, 1 in prod
+  return isDev ? false : 1;
+})();
+
 logger.info("Configuration", {
+  trust_proxy: TRUST_PROXY,
   python_api_url: PYTHON_API_URL,
   request_timeout: REQUEST_TIMEOUT,
   max_file_size: MAX_FILE_SIZE,
@@ -114,8 +125,9 @@ function cleanupRateLimitMap(): void {
   logger.debug(`Cleaned up ${entriesToDelete.length} expired rate limit entries`);
 }
 
-// Start cleanup interval
-setInterval(cleanupRateLimitMap, RATE_LIMIT_CLEANUP_INTERVAL);
+// ✅ Start cleanup interval with unref() for graceful shutdown
+const cleanupInterval = setInterval(cleanupRateLimitMap, RATE_LIMIT_CLEANUP_INTERVAL);
+cleanupInterval.unref(); // Don't prevent process exit
 
 // ============================================================================
 // Multipart Form Data Parser
@@ -174,6 +186,9 @@ function parseMultipart(req: Request): Promise<ParseMultipartResult> {
 
         const chunks: Buffer[] = [];
         let fileSize = 0;
+        // ⚠️ Note: This implementation buffers entire file in memory.
+        // For production with large files, consider streaming to disk or external storage.
+        // Current MAX_FILE_SIZE=10MB is acceptable for MVP.
 
         file.on("data", (chunk: Buffer) => {
           // Check if already timed out or resolved
@@ -291,6 +306,9 @@ function parseMultipart(req: Request): Promise<ParseMultipartResult> {
 async function startServer() {
   const app = express();
 
+  // ✅ Trust proxy configuration for accurate client IP behind reverse proxy
+  app.set("trust proxy", TRUST_PROXY);
+
   // Middleware
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
@@ -329,17 +347,35 @@ async function startServer() {
     );
     res.setHeader("Access-Control-Max-Age", "3600");
 
-    // Security headers with proper CSP
+    // ✅ Security headers
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "DENY");
     res.setHeader("X-XSS-Protection", "1; mode=block");
     res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
 
-    // CSP header
-    res.setHeader(
-      "Content-Security-Policy",
-      "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'"
-    );
+    // ✅ HSTS: Only on production with HTTPS
+    if (!isDev && req.secure) {
+      res.setHeader(
+        "Strict-Transport-Security",
+        "max-age=31536000; includeSubDomains; preload"
+      );
+    }
+
+    // ✅ Comprehensive CSP with media/blob support for audio recording and playback
+    const cspPolicy = [
+      "default-src 'self'",
+      "script-src 'self' 'unsafe-inline'", // Note: unsafe-inline needed for inline event handlers
+      "style-src 'self' 'unsafe-inline'",
+      "img-src 'self' data: https:",
+      "media-src 'self' blob:", // Allow blob URLs for audio playback
+      "connect-src 'self' https:", // Allow HTTPS connections to backend
+      "font-src 'self'",
+      "object-src 'none'",
+      "frame-ancestors 'none'",
+      "base-uri 'self'",
+      "form-action 'self'",
+    ].join("; ");
+    res.setHeader("Content-Security-Policy", cspPolicy);
 
     next();
   });
@@ -649,7 +685,7 @@ async function startServer() {
       const pythonVersion = (await pythonVersionResponse.json()) as Record<string, unknown>;
 
       res.json({
-        api_version: "1.0.13",
+        api_version: API_VERSION, // ✅ Use central version config
         node_version: process.version,
         python_backend: pythonVersion,
         timestamp: new Date().toISOString(),
@@ -682,9 +718,10 @@ async function startServer() {
 
   server.listen(PORT, "0.0.0.0", () => {
     logger.info(`Server listening on port ${PORT}`);
+    logger.info(`Trust proxy: ${TRUST_PROXY}`);
   });
 
-  // Graceful shutdown
+  // ✅ Graceful shutdown with cleanup interval unref
   process.on("SIGTERM", () => {
     logger.info("SIGTERM signal received: closing HTTP server");
     server.close(() => {
