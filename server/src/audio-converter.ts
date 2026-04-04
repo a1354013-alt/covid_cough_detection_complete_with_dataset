@@ -4,15 +4,19 @@
  * Converts various audio formats to WAV for consistent Python backend processing.
  * This ensures:
  * - Frontend can record in any supported format (WebM, OGG, etc.)
- * - Backend always receives WAV for stable processing
+ * - Backend receives WAV when conversion succeeds
  * - No format compatibility issues between Node and Python
  * 
- * STRICT MODE: Conversion is mandatory for non-WAV formats.
- * - If ffmpeg unavailable: rejects request (no fallback)
- * - If conversion fails: rejects request (no fallback)
- * - Only WAV format accepted by backend
+ * BEST-EFFORT MODE: Conversion is attempted but fallback to original format if fails.
+ * - If ffmpeg unavailable: throws error (caller handles)
+ * - If conversion fails: throws error (caller handles)
+ * - Caller decides to fallback to original format or reject
  * 
- * This maintains strict system contract: non-WAV formats must convert or fail.
+ * This module provides the conversion capability.
+ * The calling code (server/src/index.ts) implements the best-effort strategy:
+ * - Try to convert to WAV
+ * - If conversion fails: fallback to original format and send to Python
+ * - Python backend accepts both WAV and original formats
  */
 
 import { exec } from "child_process";
@@ -37,9 +41,12 @@ export function isWavFormat(mimeType: string): boolean {
  * Returns the actual format that will be sent to Python:
  * - If source is WAV: returns audio/wav
  * - If source is not WAV but conversion succeeded: returns audio/wav
- * - If source is not WAV and conversion would fail: returns original MIME type
+ * - If source is not WAV and conversion failed: returns original MIME type
  * 
  * This ensures Content-Type header matches actual audio format.
+ * 
+ * NOTE: This function is for reference. The actual logic is implemented
+ * in server/src/index.ts forwardToPythonBackend() function.
  */
 export function getTargetMimeType(sourceMimeType: string, conversionSucceeded: boolean = true): string {
   // If source is already WAV, target is WAV
@@ -91,12 +98,15 @@ async function isFfmpegAvailable(): Promise<boolean> {
  * 3. Uses ffmpeg to convert to WAV format (async)
  * 4. Reads the converted WAV file
  * 5. Cleans up temporary files
- * 6. STRICT MODE: Fails if ffmpeg unavailable or conversion fails
+ * 6. Throws error if ffmpeg unavailable or conversion fails
+ * 
+ * NOTE: Caller is responsible for handling conversion failures.
+ * The best-effort strategy (fallback to original format) is implemented in server/src/index.ts
  * 
  * @param buffer - Input audio buffer
  * @param sourceMimeType - Source audio MIME type
  * @returns Promise<Buffer> - WAV format audio buffer
- * @throws Error if conversion not available or fails
+ * @throws Error if conversion not available or fails (caller should handle)
  */
 export async function convertToWav(
   buffer: Buffer,
@@ -107,15 +117,14 @@ export async function convertToWav(
     return buffer;
   }
 
-  // ✅ 嚴格模式：檢查 ffmpeg 可用性
+  // Check if ffmpeg is available
   const ffmpegAvailable = await isFfmpegAvailable();
   if (!ffmpegAvailable) {
-    // ✅ 嚴格模式：ffmpeg 不可用且格式不是 WAV，直接拒絕
+    // ffmpeg not available - throw error and let caller handle
     throw new Error(
       `Audio format conversion unavailable. ` +
       `Source format: ${sourceMimeType}. ` +
-      `ffmpeg is not installed in the system. ` +
-      `Please install ffmpeg or send WAV format audio.`
+      `ffmpeg is not installed in the system.`
     );
   }
 
@@ -142,22 +151,15 @@ export async function convertToWav(
     // Read converted WAV file
     const wavBuffer = await readFile(outputFile);
 
-    console.info(
-      `[AUDIO-CONVERTER] Successfully converted ${sourceMimeType} to WAV ` +
-      `(${buffer.length} bytes → ${wavBuffer.length} bytes)`
-    );
+    // Log successful conversion
+    // Note: Caller (server/src/index.ts) will also log this event
 
     return wavBuffer;
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
-    console.error(
-      `[AUDIO-CONVERTER] Conversion failed for ${sourceMimeType}: ${errorMsg}`
-    );
-    // ✅ 嚴格模式：轉換失敗直接拒絕，不要 fallback
+    // Conversion failed - throw error and let caller handle
     throw new Error(
-      `Failed to convert audio format. ` +
-      `Source: ${sourceMimeType}. ` +
-      `Error: ${errorMsg}`
+      `Failed to convert audio format from ${sourceMimeType}: ${errorMsg}`
     );
   } finally {
     // Clean up temporary files

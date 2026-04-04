@@ -61,15 +61,15 @@ const TRUST_PROXY = (() => {
   return isDev ? false : 1;
 })();
 
-logger.info("Configuration", {
-  trust_proxy: TRUST_PROXY,
-  python_api_url: PYTHON_API_URL,
-  request_timeout: REQUEST_TIMEOUT,
-  max_file_size: MAX_FILE_SIZE,
-  rate_limit_window: RATE_LIMIT_WINDOW,
-  rate_limit_max_requests: RATE_LIMIT_MAX_REQUESTS,
-  csp_connect_src_extra: process.env.CSP_CONNECT_SRC_EXTRA || "(none)",
-});
+  logger.info("Configuration", {
+    trust_proxy: TRUST_PROXY,
+    python_api_url: PYTHON_API_URL,
+    request_timeout: REQUEST_TIMEOUT,
+    max_file_size: MAX_FILE_SIZE,
+    rate_limit_window: RATE_LIMIT_WINDOW,
+    rate_limit_max_requests: RATE_LIMIT_MAX_REQUESTS,
+    allowed_origins: ALLOWED_ORIGINS_STR,
+  });
 
 // ============================================================================
 // Rate Limiting with Cleanup
@@ -184,14 +184,11 @@ function parseMultipart(req: Request): Promise<ParseMultipartResult> {
           file.resume();
           return;
         }
-        
-        // ✅ Mark file as received immediately to prevent processing other files
-        fileReceived = true;
 
         const chunks: Buffer[] = [];
         let fileSize = 0;
-        // ✅ Note: This implementation buffers entire file in memory.
-        // For production with large files (>10MB), consider streaming to disk or external storage.
+        // ⚠️ Note: This implementation buffers entire file in memory.
+        // For production with large files, consider streaming to disk or external storage.
         // Current MAX_FILE_SIZE=10MB is acceptable for MVP.
 
         file.on("data", (chunk: Buffer) => {
@@ -239,21 +236,12 @@ function parseMultipart(req: Request): Promise<ParseMultipartResult> {
           const { filename } = info;
           const mimeType = info.mimeType || "audio/wav";
 
-          // ✅ Immediately resolve after first valid file
+          fileReceived = true;
           clearTimeout(timeoutHandle);
           if (!resolved) {
             resolved = true;
-            // ✅ Destroy busboy to stop processing remaining data
-            try {
-              bb.destroy();
-              req.unpipe(bb);
-            } catch {
-              // Ignore cleanup errors
-            }
             resolve({ file: fileContent, filename, mimeType });
           }
-          // ✅ Return early to prevent further processing
-          return;
         });
 
         file.on("error", (err: Error) => {
@@ -289,14 +277,13 @@ function parseMultipart(req: Request): Promise<ParseMultipartResult> {
             // File was received but not properly resolved (shouldn't happen)
             resolve({ error: "File processing error", details: "Failed to finalize file" });
           } else {
-            // No file received before close
             resolve({ error: "No audio file found in request", details: "Ensure audio or file field is present" });
           }
         }
       });
 
       // Pipe request to busboy parser
-      // ✅ Note: Only first valid file is processed; busboy is destroyed after first file completes
+      // Note: If multiple files are sent, only the first one is processed
       req.pipe(bb);
     } catch (err) {
       clearTimeout(timeoutHandle);
@@ -328,23 +315,8 @@ async function startServer() {
   app.use(express.urlencoded({ extended: true }));
 
   // Security Headers Middleware
-  // ✅ CORS fail-fast in production if not configured
-  if (!isDev && !process.env.ALLOWED_ORIGINS) {
-    logger.error(
-      "CORS_PRODUCTION_ERROR: ALLOWED_ORIGINS not set in production. " +
-      "This is a deployment error. Set ALLOWED_ORIGINS environment variable before starting."
-    );
-    process.exit(1);
-  }
-  
-  // ✅ Log CSP configuration
-  const pythonApiUrl = new URL(PYTHON_API_URL);
-  const pythonApiOrigin = `${pythonApiUrl.protocol}//${pythonApiUrl.host}`;
-  logger.info("CSP Configuration", {
-    python_api_origin: pythonApiOrigin,
-    csp_connect_src_extra: process.env.CSP_CONNECT_SRC_EXTRA || "(none)",
-  });
-  
+  // ✅ CORS configuration from environment
+  // ✅ CORS fail-fast   // ✅ CORS configuration
   const ALLOWED_ORIGINS_STR = process.env.ALLOWED_ORIGINS || "*"; // Dev default: allow all
   const ALLOWED_ORIGINS_LIST = ALLOWED_ORIGINS_STR === "*" ? ["*"] : ALLOWED_ORIGINS_STR.split(",").map(o => o.trim());
   
@@ -384,22 +356,13 @@ async function startServer() {
     }
 
     // ✅ Comprehensive CSP with media/blob support for audio recording and playback
-    // ✅ Dynamic connect-src based on PYTHON_API_URL + optional CSP_CONNECT_SRC_EXTRA
-    const pythonApiUrlObj = new URL(PYTHON_API_URL);
-    const pythonApiOriginStr = `${pythonApiUrlObj.protocol}//${pythonApiUrlObj.host}`;
-    const extraConnectSrcStr = process.env.CSP_CONNECT_SRC_EXTRA || "";
-    const connectSrcDirectivesArr = ["'self'", pythonApiOriginStr];
-    if (extraConnectSrcStr) {
-      connectSrcDirectivesArr.push(...extraConnectSrcStr.split(" ").filter(s => s.trim()));
-    }
-    
     const cspPolicy = [
       "default-src 'self'",
       "script-src 'self' 'unsafe-inline'", // Note: unsafe-inline needed for inline event handlers
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: https:",
       "media-src 'self' blob:", // Allow blob URLs for audio playback
-      `connect-src ${connectSrcDirectivesArr.join(" ")}`, // Dynamic: Python API + optional extras
+      "connect-src 'self' https:", // Allow HTTPS connections to backend
       "font-src 'self'",
       "object-src 'none'",
       "frame-ancestors 'none'",
@@ -427,61 +390,14 @@ async function startServer() {
       status: "alive",
       timestamp: new Date().toISOString(),
       service: "covid-cough-detection-api",
-      version: API_VERSION, // ✅ Use central version config
+      version: APP_VERSION, // ✅ Use central version config
     });
   });
 
   /**
    * GET /api/readyz (Readiness Probe)
    * 
-   * Returns 200 only if Node.js AND Python backend AND model are ready.
-   * Used by Docker/K8s to determine if service can accept traffic.
-   * Calls Python /readyz endpoint to check model readiness.
-   * Returns 503 if any dependency is unavailable.
-   */
-  app.get("/api/readyz", async (_req: Request, res: Response): Promise<void> => {
-    try {
-      // ✅ Call Python /readyz to check model readiness
-      const pythonReadyzResponse = await fetch(`${PYTHON_API_URL}/readyz`, {
-        signal: AbortSignal.timeout(5000),
-      });
-
-      // ✅ Parse Python readyz response to check model_loaded and get full status
-      const pythonReadyz = (await pythonReadyzResponse.json()) as Record<string, unknown>;
-      const modelLoaded = pythonReadyz.model_loaded === true;
-
-      if (!pythonReadyzResponse.ok) {
-        // Python backend returned 503, meaning model is not ready
-        res.status(503).json({
-          status: "not_ready",
-          timestamp: new Date().toISOString(),
-          python_backend: "started",
-          model_loaded: modelLoaded,
-          reason: pythonReadyz.error || "Model not ready in Python backend",
-        });
-        return;
-      }
-
-      // Python backend returned 200, model is ready
-      res.json({
-        status: "ready",
-        timestamp: new Date().toISOString(),
-        python_backend: "ok",
-        model_loaded: true,
-      });
-    } catch (err) {
-      // Python service is unreachable (network error, timeout, etc.)
-      const errorMessage = err instanceof Error ? err.message : "Unknown error";
-      res.status(503).json({
-        status: "not_ready",
-        timestamp: new Date().toISOString(),
-        python_backend: "unreachable",
-        reason: `Python backend unreachable: ${errorMessage}`,
-      });
-    }
-  });
-
-  /**
+   * Returns 200 only if Node.js AND Python backend AND mode  /**
    * GET /api/health (Backward Compatibility Mirror)
    * 
    * Mirrors /api/readyz behavior for backward compatibility.
@@ -525,6 +441,39 @@ async function startServer() {
         timestamp: new Date().toISOString(),
         python_backend: "unreachable",
         reason: `Python backend unreachable: ${errorMessage}`,
+      });
+    }
+  });  * GET /api/health (Deprecated - for backward compatibility)
+   * 
+   * Use /api/healthz for liveness or /api/readyz for readiness.
+   */
+  app.get("/api/health", async (_req: Request, res: Response): Promise<void> => {
+    try {
+      const pythonHealthResponse = await fetch(`${PYTHON_API_URL}/health`, {
+        signal: AbortSignal.timeout(5000),
+      });
+
+      if (!pythonHealthResponse.ok) {
+        res.status(503).json({
+          status: "unhealthy",
+          timestamp: new Date().toISOString(),
+          python_backend: "unavailable",
+          reason: "Python backend is not responding",
+        });
+        return;
+      }
+
+      res.json({
+        status: "ok",
+        timestamp: new Date().toISOString(),
+        python_backend: "ok",
+      });
+    } catch (err) {
+      res.status(503).json({
+        status: "unhealthy",
+        timestamp: new Date().toISOString(),
+        python_backend: "unavailable",
+        reason: err instanceof Error ? err.message : "Unknown error",
       });
     }
   });

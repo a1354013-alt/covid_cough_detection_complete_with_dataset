@@ -45,15 +45,45 @@ export interface ApiError {
   details?: string;
 }
 
+/**
+ * Liveness response from /api/healthz endpoint
+ * Indicates if Node.js process is alive
+ */
+export interface HealthzResponse {
+  status: "alive";
+  timestamp: string;
+  service: string;
+  version: string;
+}
+
+/**
+ * Readiness response from /api/readyz and /api/health endpoints
+ * Indicates if service is ready to accept traffic
+ */
+export interface ReadinessResponse {
+  status: "ready" | "not_ready";
+  timestamp: string;
+  python_backend: "ok" | "started" | "unreachable";
+  model_loaded?: boolean;
+  reason?: string;
+}
+
+/**
+ * Generic health response (for backward compatibility)
+ */
 export interface HealthResponse {
   status: string;
   timestamp: string;
 }
 
+/**
+ * ✅ Version response from /api/version endpoint
+ * Aligns with actual server response structure
+ */
 export interface VersionResponse {
   api_version: string;
-  model_version: string | null;
-  python_backend: string;
+  node_version: string;
+  python_backend: Record<string, unknown>; // Object, not string
   timestamp: string;
 }
 
@@ -154,7 +184,7 @@ class ApiClient {
   /**
    * Check API health status
    */
-  async getHealth(): Promise<HealthResponse> {
+  async getHealth(): Promise<HealthzResponse> {
     try {
       const response = await fetch(`${this.baseUrl}/healthz`, {
         signal: AbortSignal.timeout(5000),
@@ -173,7 +203,7 @@ class ApiClient {
   /**
    * Check API readiness (model available)
    */
-  async getReadiness(): Promise<HealthResponse> {
+  async getReadiness(): Promise<ReadinessResponse> {
     try {
       const response = await fetch(`${this.baseUrl}/readyz`, {
         signal: AbortSignal.timeout(5000),
