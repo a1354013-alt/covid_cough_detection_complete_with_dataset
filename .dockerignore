@@ -1,0 +1,83 @@
+# Version control
+.git
+.gitignore
+.gitattributes
+
+# Dependencies
+node_modules/
+.pnpm-store/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Build outputs
+dist/
+build/
+.next/
+.nuxt/
+.vite/
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Temporary files
+*.tmp
+*.temp
+.tmp/
+*.backup
+.manus-logs/
+
+# Archives
+*.tar.gz
+*.zip
+
+# Documentation
+README.md
+MODIFICATIONS_REPORT.md
+ENGINEERING_FIXES_REPORT.md
+FINAL_COMPLETION_REPORT.md
+CHANGES_SUMMARY.txt
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+.circleci/
+
+# Development files
+docker-compose.yml
+Dockerfile.node

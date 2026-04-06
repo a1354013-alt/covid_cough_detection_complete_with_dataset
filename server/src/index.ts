@@ -416,6 +416,104 @@ async function startServer() {
   // ============================================================================
 
   /**
+   * Normalize Python response payload
+   * FastAPI returns {detail: {...}} on error, but {key: value} on success
+   * This function extracts the actual payload for consistent access
+   */
+  function normalizePythonPayload(json: Record<string, unknown>): Record<string, unknown> {
+    // If response has 'detail' field and it's an object, use it as payload
+    if (json.detail && typeof json.detail === "object") {
+      return json.detail as Record<string, unknown>;
+    }
+    // Otherwise use the original json as payload
+    return json;
+  }
+
+  /**
+   * Build readiness response JSON
+   * Unified response assembly for /api/readyz and /api/health
+   * Ensures consistent field structure across both endpoints
+   */
+  function buildReadinessResponse(
+    readiness: Awaited<ReturnType<typeof checkPythonReadiness>>
+  ): Record<string, unknown> {
+    const timestamp = new Date().toISOString();
+
+    if (!readiness.isReady) {
+      // Not ready: return 503 response with details
+      return {
+        status: "not_ready",
+        timestamp,
+        python_backend: readiness.error?.includes("unreachable") ? "unreachable" : "started",
+        model_loaded: readiness.modelLoaded,
+        reason: readiness.error || "Model not ready in Python backend",
+        ...(readiness.modelVersion && { model_version: readiness.modelVersion }),
+        ...(readiness.device && { device: readiness.device }),
+      };
+    }
+
+    // Ready: return 200 response
+    return {
+      status: "ready",
+      timestamp,
+      python_backend: "ok",
+      model_loaded: true,
+      ...(readiness.modelVersion && { model_version: readiness.modelVersion }),
+      ...(readiness.device && { device: readiness.device }),
+    };
+  }
+
+  /**
+   * Check Python backend readiness
+   * Calls Python /readyz and normalizes response payload
+   * Returns readiness status with model_loaded and error details
+   */
+  async function checkPythonReadiness(): Promise<{
+    isReady: boolean;
+    modelLoaded: boolean;
+    error?: string;
+    modelVersion?: string;
+    device?: string;
+  }> {
+    try {
+      const pythonReadyzResponse = await fetch(`${PYTHON_API_URL}/readyz`, {
+        signal: AbortSignal.timeout(5000),
+      });
+
+      const json = (await pythonReadyzResponse.json()) as Record<string, unknown>;
+      const payload = normalizePythonPayload(json);
+      const modelLoaded = payload.model_loaded === true;
+
+      if (!pythonReadyzResponse.ok) {
+        // Python backend returned 503, meaning model is not ready
+        return {
+          isReady: false,
+          modelLoaded,
+          error: (payload.error as string) || "Model not ready in Python backend",
+          modelVersion: payload.model_version as string | undefined,
+          device: payload.device as string | undefined,
+        };
+      }
+
+      // Python backend returned 200, model is ready
+      return {
+        isReady: true,
+        modelLoaded: true,
+        modelVersion: payload.model_version as string | undefined,
+        device: payload.device as string | undefined,
+      };
+    } catch (err) {
+      // Python service is unreachable
+      const errorMessage = err instanceof Error ? err.message : "Unknown error";
+      return {
+        isReady: false,
+        modelLoaded: false,
+        error: `Python backend unreachable: ${errorMessage}`,
+      };
+    }
+  }
+
+  /**
    * GET /api/healthz (Liveness Probe)
    * 
    * Returns 200 if Node.js process is alive.
@@ -440,45 +538,15 @@ async function startServer() {
    * Returns 503 if any dependency is unavailable.
    */
   app.get("/api/readyz", async (_req: Request, res: Response): Promise<void> => {
-    try {
-      // ✅ Call Python /readyz to check model readiness
-      const pythonReadyzResponse = await fetch(`${PYTHON_API_URL}/readyz`, {
-        signal: AbortSignal.timeout(5000),
-      });
+    const readiness = await checkPythonReadiness();
+    const response = buildReadinessResponse(readiness);
 
-      // ✅ Parse Python readyz response to check model_loaded and get full status
-      const pythonReadyz = (await pythonReadyzResponse.json()) as Record<string, unknown>;
-      const modelLoaded = pythonReadyz.model_loaded === true;
-
-      if (!pythonReadyzResponse.ok) {
-        // Python backend returned 503, meaning model is not ready
-        res.status(503).json({
-          status: "not_ready",
-          timestamp: new Date().toISOString(),
-          python_backend: "started",
-          model_loaded: modelLoaded,
-          reason: pythonReadyz.error || "Model not ready in Python backend",
-        });
-        return;
-      }
-
-      // Python backend returned 200, model is ready
-      res.json({
-        status: "ready",
-        timestamp: new Date().toISOString(),
-        python_backend: "ok",
-        model_loaded: true,
-      });
-    } catch (err) {
-      // Python service is unreachable (network error, timeout, etc.)
-      const errorMessage = err instanceof Error ? err.message : "Unknown error";
-      res.status(503).json({
-        status: "not_ready",
-        timestamp: new Date().toISOString(),
-        python_backend: "unreachable",
-        reason: `Python backend unreachable: ${errorMessage}`,
-      });
+    if (!readiness.isReady) {
+      res.status(503).json(response);
+      return;
     }
+
+    res.json(response);
   });
 
   /**
@@ -488,45 +556,16 @@ async function startServer() {
    * Use /api/healthz for liveness or /api/readyz for readiness.
    */
   app.get("/api/health", async (_req: Request, res: Response): Promise<void> => {
-    try {
-      // ✅ Call Python /readyz (not /health) to check model readiness
-      const pythonReadyzResponse = await fetch(`${PYTHON_API_URL}/readyz`, {
-        signal: AbortSignal.timeout(5000),
-      });
+    // Backward compatibility mirror of /api/readyz
+    const readiness = await checkPythonReadiness();
+    const response = buildReadinessResponse(readiness);
 
-      // ✅ Parse Python readyz response to check model_loaded and get full status
-      const pythonReadyz = (await pythonReadyzResponse.json()) as Record<string, unknown>;
-      const modelLoaded = pythonReadyz.model_loaded === true;
-
-      if (!pythonReadyzResponse.ok) {
-        // Python backend returned 503, meaning model is not ready
-        res.status(503).json({
-          status: "not_ready",
-          timestamp: new Date().toISOString(),
-          python_backend: "started",
-          model_loaded: modelLoaded,
-          reason: pythonReadyz.error || "Model not ready in Python backend",
-        });
-        return;
-      }
-
-      // Python backend returned 200, model is ready
-      res.json({
-        status: "ready",
-        timestamp: new Date().toISOString(),
-        python_backend: "ok",
-        model_loaded: true,
-      });
-    } catch (err) {
-      // Python service is unreachable (network error, timeout, etc.)
-      const errorMessage = err instanceof Error ? err.message : "Unknown error";
-      res.status(503).json({
-        status: "not_ready",
-        timestamp: new Date().toISOString(),
-        python_backend: "unreachable",
-        reason: `Python backend unreachable: ${errorMessage}`,
-      });
+    if (!readiness.isReady) {
+      res.status(503).json(response);
+      return;
     }
+
+    res.json(response);
   });
 
   // ============================================================================
@@ -718,9 +757,15 @@ async function startServer() {
       });
 
       if (!pythonVersionResponse.ok) {
-        res.status(503).json({
-          error: "Python backend unavailable",
-          details: isDev ? "Could not fetch version information from Python backend" : undefined,
+        // Degradation: Return Node version info even if Python is unavailable
+        res.json({
+          api_version: API_VERSION,
+          node_version: process.version,
+          python_backend: {
+            status: "unavailable",
+            error: isDev ? "Could not fetch version information from Python backend" : "Python backend unavailable",
+          },
+          timestamp: new Date().toISOString(),
         });
         return;
       }
@@ -728,15 +773,22 @@ async function startServer() {
       const pythonVersion = (await pythonVersionResponse.json()) as Record<string, unknown>;
 
       res.json({
-        api_version: API_VERSION, // ✅ Use central version config
+        api_version: API_VERSION,
         node_version: process.version,
         python_backend: pythonVersion,
         timestamp: new Date().toISOString(),
       });
     } catch (err) {
-      res.status(503).json({
-        error: "Version check failed",
-        details: isDev ? (err instanceof Error ? err.message : String(err)) : undefined,
+      // Degradation: Return Node version info even if Python fetch fails
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      res.json({
+        api_version: API_VERSION,
+        node_version: process.version,
+        python_backend: {
+          status: "unreachable",
+          error: isDev ? errorMessage : "Python backend unreachable",
+        },
+        timestamp: new Date().toISOString(),
       });
     }
   });

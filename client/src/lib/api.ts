@@ -66,6 +66,8 @@ export interface ReadinessResponse {
   python_backend: "ok" | "started" | "unreachable";
   model_loaded?: boolean;
   reason?: string;
+  model_version?: string;
+  device?: string;
 }
 
 /**
@@ -202,6 +204,7 @@ class ApiClient {
 
   /**
    * Check API readiness (model available)
+   * Safely parses 503 responses to extract backend reason field
    */
   async getReadiness(): Promise<ReadinessResponse> {
     try {
@@ -210,6 +213,16 @@ class ApiClient {
       });
 
       if (response.status === 503) {
+        // Try to extract reason from response body
+        try {
+          const body = (await response.json()) as Record<string, unknown>;
+          const reason = body.reason as string | undefined;
+          if (reason) {
+            throw new Error(`Service not ready: ${reason}`);
+          }
+        } catch (parseErr) {
+          // If parsing fails, use fallback message
+        }
         throw new Error("Service not ready: Model unavailable");
       }
 

@@ -166,6 +166,8 @@ python_project/build/
 *.tmp
 *.temp
 .tmp/
+*.backup
+.manus-logs/
 
 # Archives
 *.tar.gz
