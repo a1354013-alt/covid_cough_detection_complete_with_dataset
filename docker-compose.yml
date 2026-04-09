@@ -1,7 +1,6 @@
-version: '3.8'
+version: "3.8"
 
 services:
-  # Node.js Backend + Frontend
   node-backend:
     build:
       context: .
@@ -15,9 +14,9 @@ services:
       - RATE_LIMIT_MAX_REQUESTS=30
       - ALLOWED_ORIGINS=http://localhost:3000
     depends_on:
-      - python-backend
+      python-backend:
+        condition: service_healthy
     restart: unless-stopped
-    # ✅ healthz = liveness check (Node process alive)
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3000/api/healthz"]
       interval: 30s
@@ -27,7 +26,6 @@ services:
     networks:
       - covid-network
 
-  # Python Backend
   python-backend:
     build:
       context: ./python_project
@@ -39,18 +37,16 @@ services:
       - LOG_LEVEL=info
       - MODEL_PATH=/app/models/model.pt
     restart: unless-stopped
-    # ✅ /readyz = readiness check (model ready)
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/readyz"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 40s
-    networks:
-      - covid-network
     volumes:
       - ./python_project/models:/app/models
-      - ./python_project/data:/app/data
+    networks:
+      - covid-network
 
 networks:
   covid-network:

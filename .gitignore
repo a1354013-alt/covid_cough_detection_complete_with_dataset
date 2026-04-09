@@ -1,174 +1,63 @@
 # Dependencies
-**/node_modules
+node_modules/
+**/node_modules/
 .pnpm-store/
 
-# Build outputs
+# Build artifacts
 dist/
 build/
-*.dist
-
-# Environment variables
-.env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# IDE and editor files
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-
-# OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
-
-# Logs
-logs
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-lerna-debug.log*
-
-# Runtime data
-pids
-*.pid
-*.seed
-*.pid.lock
-
-# Coverage directory used by tools like istanbul
+**/dist/
+**/build/
+.vite/
 coverage/
-*.lcov
-
-# nyc test coverage
-.nyc_output
-
-# Dependency directories
-jspm_packages/
-
-# TypeScript cache
+.nyc_output/
 *.tsbuildinfo
 
-# Optional npm cache directory
-.npm
-
-# Optional eslint cache
-.eslintcache
-
-# Microbundle cache
-.rpt2_cache/
-.rts2_cache_cjs/
-.rts2_cache_es/
-.rts2_cache_umd/
-
-# Optional REPL history
-.node_repl_history
-
-# Output of 'npm pack'
-*.tgz
-
-# Yarn Integrity file
-.yarn-integrity
-
-# parcel-bundler cache (https://parceljs.org/)
-.cache
-.parcel-cache
-
-# Next.js build output
-.next
-
-# Nuxt.js build / generate output
-.nuxt
-
-# Gatsby files
-.cache/
-
-# Storybook build outputs
-.out
-.storybook-out
-
-# Temporary folders
-tmp/
-temp/
-
-# Database
-*.db
-*.sqlite
-*.sqlite3
-
-# Python
+# Python artifacts
 __pycache__/
 *.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-PIPFILE.lock
+*.pyo
+*.pyd
 .pytest_cache/
-.coverage
-htmlcov/
+.mypy_cache/
+.ruff_cache/
 .tox/
-.hypothesis/
-.venv
+.venv/
 venv/
-ENV/
 env/
-.python-version
+*.egg-info/
 
-# Project specific
-.vite/
-.next/
-.nuxt/
-.cache/
-.parcel-cache/
-.vercel
-.output
-.env.*.local
+# Runtime / temp
+*.log
+logs/
+tmp/
+temp/
+*.tmp
+*.temp
+*.pid
+*.pid.lock
+*.seed
 
-# Build artifacts
-client/dist/
-server/dist/
-python_project/dist/
-python_project/build/
+# Environment files
+.env
+.env.*
+!.env.example
 
-# IDE specific
-.vscode/settings.json
-.vscode/launch.json
+# OS / editor
 .DS_Store
+Thumbs.db
+.idea/
+.vscode/
 *.swp
 *.swo
 *~
 
-# Temporary files
-*.tmp
-*.temp
-.tmp/
-*.backup
-.manus-logs/
-
-# Archives
+# Archives / packaged outputs
 *.tar.gz
 *.zip
+*.tgz
+
+# Project-specific transient dirs
+.manus-logs/
+python_project/data/
+python_project/models/

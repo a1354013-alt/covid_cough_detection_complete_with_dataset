@@ -66,18 +66,7 @@ coverage/
 *.tar.gz
 *.zip
 
-# Documentation
-README.md
-MODIFICATIONS_REPORT.md
-ENGINEERING_FIXES_REPORT.md
-FINAL_COMPLETION_REPORT.md
-CHANGES_SUMMARY.txt
-
 # CI/CD
 .github/
 .gitlab-ci.yml
 .circleci/
-
-# Development files
-docker-compose.yml
-Dockerfile.node

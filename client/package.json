@@ -9,16 +9,14 @@
     "preview": "vite preview",
     "check": "tsc --noEmit",
     "lint": "eslint src --ext .ts,.tsx",
-    "clean": "rm -rf dist .vite"
+    "test": "tsx --test src/**/*.test.ts",
+    "clean": "rimraf dist .vite"
   },
   "dependencies": {
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "wouter": "^3.1.0",
     "lucide-react": "^0.263.1",
-    "@radix-ui/react-dialog": "^1.1.1",
-    "@radix-ui/react-alert-dialog": "^1.1.1",
-    "@radix-ui/react-slot": "^1.2.4",
     "@radix-ui/react-tooltip": "^1.1.0",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.0.0",
@@ -35,12 +33,14 @@
     "@tailwindcss/vite": "^4.0.0",
     "vite": "^7.3.1",
     "typescript": "^5.1.3",
+    "tsx": "^4.20.5",
     "tailwindcss": "^4.0.0",
     "terser": "^5.31.0",
     "eslint": "^8.57.0",
     "@typescript-eslint/parser": "^7.0.0",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "eslint-plugin-react": "^7.33.0",
-    "eslint-plugin-react-hooks": "^4.6.0"
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "rimraf": "^6.0.1"
   }
 }

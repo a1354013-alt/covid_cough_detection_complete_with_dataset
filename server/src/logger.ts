@@ -4,6 +4,7 @@
  * Provides consistent logging across the application with different log levels
  * and structured output for easier debugging and monitoring.
  */
+/* eslint-disable no-console */
 
 export enum LogLevel {
   DEBUG = "DEBUG",

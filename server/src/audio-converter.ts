@@ -1,188 +1,115 @@
-/**
- * Audio Format Converter
- * 
- * Converts various audio formats to WAV for consistent Python backend processing.
- * This ensures:
- * - Frontend can record in any supported format (WebM, OGG, etc.)
- * - Backend receives WAV when conversion succeeds
- * - No format compatibility issues between Node and Python
- * 
- * BEST-EFFORT MODE: Conversion is attempted but fallback to original format if fails.
- * - If ffmpeg unavailable: throws error (caller handles)
- * - If conversion fails: throws error (caller handles)
- * - Caller decides to fallback to original format or reject
- * 
- * This module provides the conversion capability.
- * The calling code (server/src/index.ts) implements the best-effort strategy:
- * - Try to convert to WAV
- * - If conversion fails: fallback to original format and send to Python
- * - Python backend accepts both WAV and original formats
+﻿/**
+ * Audio format conversion utilities.
+ *
+ * Conversion is best-effort:
+ * - If source is already WAV, payload is returned unchanged.
+ * - If ffmpeg conversion succeeds, WAV payload is returned.
+ * - If conversion fails, caller can fallback to original payload.
  */
 
-import { exec } from "child_process";
-import { writeFile, readFile, unlink } from "fs/promises";
-import { randomBytes } from "crypto";
-import path from "path";
-import os from "os";
-import { promisify } from "util";
+import { randomBytes } from "node:crypto";
+import { promises as fs } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { spawn } from "node:child_process";
 
-const execAsync = promisify(exec);
+function runProcess(command: string, args: string[]): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      stdio: ["ignore", "ignore", "pipe"],
+      windowsHide: true,
+    });
 
-/**
- * Check if audio is already in WAV format
- */
+    let stderr = "";
+    child.stderr.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString("utf8");
+    });
+
+    child.on("error", (err) => {
+      reject(err);
+    });
+
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(new Error(stderr.trim() || `${command} exited with code ${code}`));
+    });
+  });
+}
+
 export function isWavFormat(mimeType: string): boolean {
   return mimeType.toLowerCase().includes("wav");
 }
 
-/**
- * Get target MIME type for backend processing
- * 
- * Returns the actual format that will be sent to Python:
- * - If source is WAV: returns audio/wav
- * - If source is not WAV but conversion succeeded: returns audio/wav
- * - If source is not WAV and conversion failed: returns original MIME type
- * 
- * This ensures Content-Type header matches actual audio format.
- * 
- * NOTE: This function is for reference. The actual logic is implemented
- * in server/src/index.ts forwardToPythonBackend() function.
- */
-export function getTargetMimeType(sourceMimeType: string, conversionSucceeded: boolean = true): string {
-  // If source is already WAV, target is WAV
+export function getTargetMimeType(sourceMimeType: string, conversionSucceeded = true): string {
   if (isWavFormat(sourceMimeType)) {
     return "audio/wav";
   }
-  
-  // If conversion succeeded, target is WAV
-  if (conversionSucceeded) {
-    return "audio/wav";
-  }
-  
-  // If conversion failed or not attempted, keep original MIME type
-  // This prevents lying about format in Content-Type header
-  return sourceMimeType;
+  return conversionSucceeded ? "audio/wav" : sourceMimeType;
 }
 
-/**
- * Determine if format conversion is needed
- */
 export function needsConversion(mimeType: string): boolean {
-  // If already WAV, no conversion needed
-  if (isWavFormat(mimeType)) {
-    return false;
-  }
-
-  // For other formats, conversion is needed
-  return true;
+  return !isWavFormat(mimeType);
 }
 
-/**
- * Check if ffmpeg is available in the system
- */
 async function isFfmpegAvailable(): Promise<boolean> {
   try {
-    await execAsync("ffmpeg -version", { maxBuffer: 1024 * 1024 });
+    await runProcess("ffmpeg", ["-version"]);
     return true;
   } catch {
     return false;
   }
 }
 
-/**
- * Convert audio buffer to WAV format using ffmpeg
- * 
- * This implementation:
- * 1. Checks if ffmpeg is available
- * 2. Writes the input buffer to a temporary file
- * 3. Uses ffmpeg to convert to WAV format (async)
- * 4. Reads the converted WAV file
- * 5. Cleans up temporary files
- * 6. Throws error if ffmpeg unavailable or conversion fails
- * 
- * NOTE: Caller is responsible for handling conversion failures.
- * The best-effort strategy (fallback to original format) is implemented in server/src/index.ts
- * 
- * @param buffer - Input audio buffer
- * @param sourceMimeType - Source audio MIME type
- * @returns Promise<Buffer> - WAV format audio buffer
- * @throws Error if conversion not available or fails (caller should handle)
- */
-export async function convertToWav(
-  buffer: Buffer,
-  sourceMimeType: string
-): Promise<Buffer> {
-  // If already WAV, return as-is
+export async function convertToWav(buffer: Buffer, sourceMimeType: string): Promise<Buffer> {
   if (isWavFormat(sourceMimeType)) {
     return buffer;
   }
 
-  // Check if ffmpeg is available
-  const ffmpegAvailable = await isFfmpegAvailable();
-  if (!ffmpegAvailable) {
-    // ffmpeg not available - throw error and let caller handle
+  if (!(await isFfmpegAvailable())) {
     throw new Error(
-      `Audio format conversion unavailable. ` +
-      `Source format: ${sourceMimeType}. ` +
-      `ffmpeg is not installed in the system.`
+      `Audio format conversion unavailable for ${sourceMimeType}: ffmpeg is not installed`
     );
   }
 
-  // Generate temporary file paths
-  const tempDir = os.tmpdir();
   const tempId = randomBytes(8).toString("hex");
-  const inputFile = path.join(tempDir, `audio-input-${tempId}.tmp`);
-  const outputFile = path.join(tempDir, `audio-output-${tempId}.wav`);
+  const inputPath = path.join(os.tmpdir(), `audio-input-${tempId}.bin`);
+  const outputPath = path.join(os.tmpdir(), `audio-output-${tempId}.wav`);
 
   try {
-    // Write input buffer to temporary file
-    await writeFile(inputFile, buffer);
+    await fs.writeFile(inputPath, buffer);
 
-    // Convert to WAV using ffmpeg (async)
-    // -i: input file
-    // -acodec pcm_s16le: PCM 16-bit little-endian (standard WAV)
-    // -ar 16000: 16kHz sample rate (common for speech)
-    // -ac 1: mono (single channel)
-    // -y: overwrite output file
-    const ffmpegCmd = `ffmpeg -i "${inputFile}" -acodec pcm_s16le -ar 16000 -ac 1 -y "${outputFile}" 2>/dev/null`;
+    await runProcess("ffmpeg", [
+      "-hide_banner",
+      "-loglevel",
+      "error",
+      "-i",
+      inputPath,
+      "-acodec",
+      "pcm_s16le",
+      "-ar",
+      "16000",
+      "-ac",
+      "1",
+      "-y",
+      outputPath,
+    ]);
 
-    await execAsync(ffmpegCmd, { maxBuffer: 1024 * 1024 });
-
-    // Read converted WAV file
-    const wavBuffer = await readFile(outputFile);
-
-    // Log successful conversion
-    // Note: Caller (server/src/index.ts) will also log this event
-
-    return wavBuffer;
-  } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    // Conversion failed - throw error and let caller handle
+    return await fs.readFile(outputPath);
+  } catch (err) {
     throw new Error(
-      `Failed to convert audio format from ${sourceMimeType}: ${errorMsg}`
+      `Failed to convert audio format from ${sourceMimeType}: ${
+        err instanceof Error ? err.message : String(err)
+      }`
     );
   } finally {
-    // Clean up temporary files
-    try {
-      await unlink(inputFile);
-    } catch {
-      // Ignore cleanup errors
-    }
-    try {
-      await unlink(outputFile);
-    } catch {
-      // Ignore cleanup errors
-    }
+    await Promise.allSettled([fs.unlink(inputPath), fs.unlink(outputPath)]);
   }
 }
 
-/**
- * Get conversion status for logging
- */
-export function getConversionStatus(
-  sourceMimeType: string,
-  targetMimeType: string
-): string {
+export function getConversionStatus(sourceMimeType: string, targetMimeType: string): string {
   if (sourceMimeType === targetMimeType) {
     return "no-conversion-needed";
   }

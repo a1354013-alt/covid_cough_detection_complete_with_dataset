@@ -63,12 +63,18 @@ class AudioProcessor:
             ValueError: If audio cannot be loaded
         """
         try:
+            if not audio_data:
+                raise ValueError("Empty audio payload")
+
             # Load audio from bytes
             y, sr = librosa.load(
                 io.BytesIO(audio_data),
                 sr=original_sr,
                 mono=True,
             )
+
+            if y.size == 0:
+                raise ValueError("Decoded audio has zero samples")
 
             # Resample to target sample rate if needed
             if sr != self.sample_rate:
@@ -96,14 +102,29 @@ class AudioProcessor:
         - Normalize amplitude
         - Pad/truncate to fixed duration
         """
+        if y.size == 0:
+            raise ValueError("Cannot preprocess empty audio array")
+
         # Trim silence
         y_trimmed, _ = librosa.effects.trim(y, top_db=40)
+        if y_trimmed.size == 0:
+            raise ValueError("Audio contains silence only after trimming")
+
+        peak = np.max(np.abs(y_trimmed))
+        if peak <= 1e-8:
+            raise ValueError("Audio signal amplitude is too low for reliable inference")
 
         # Normalize amplitude
-        y_normalized = y_trimmed / (np.max(np.abs(y_trimmed)) + 1e-8)
+        y_normalized = y_trimmed / peak
 
         # Pad or truncate to fixed duration
         n_samples = self.sample_rate * self.duration
+        min_required_samples = max(int(self.sample_rate * 0.25), 1)
+        if len(y_normalized) < min_required_samples:
+            raise ValueError(
+                f"Audio too short for analysis. Minimum required duration is {min_required_samples / self.sample_rate:.2f}s"
+            )
+
         if len(y_normalized) < n_samples:
             # Pad with zeros
             y_padded = np.pad(y_normalized, (0, n_samples - len(y_normalized)), mode="constant")
