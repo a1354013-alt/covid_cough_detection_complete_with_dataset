@@ -16,6 +16,7 @@ from typing import Optional
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 import uvicorn
 
@@ -102,7 +103,15 @@ async def healthz():
 @app.get("/readyz", response_model=HealthResponse)
 async def readyz():
     if model_inference is None:
-        raise HTTPException(status_code=503, detail="Inference service not initialized")
+        response_data = {
+            "status": "not_ready",
+            "model_loaded": False,
+            "model_version": None,
+            "device": "cpu",
+            "error": "Inference service not initialized",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+        return JSONResponse(status_code=503, content=response_data)
 
     status = model_inference.get_status()
     response_data = {
@@ -115,7 +124,7 @@ async def readyz():
     }
 
     if not status["is_ready"]:
-        raise HTTPException(status_code=503, detail=response_data)
+        return JSONResponse(status_code=503, content=response_data)
     return response_data
 
 

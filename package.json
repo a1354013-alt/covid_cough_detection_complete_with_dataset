@@ -4,6 +4,7 @@
   "description": "COVID-19 Cough Detection System - Enterprise Edition",
   "private": true,
   "type": "module",
+  "packageManager": "pnpm@10.33.0",
   "scripts": {
     "dev": "concurrently \"corepack pnpm --filter ./client run dev\" \"corepack pnpm --filter ./server run dev\"",
     "dev:client": "corepack pnpm --filter ./client run dev",

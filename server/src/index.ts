@@ -27,6 +27,7 @@ interface ParseMultipartResult {
   file?: Buffer;
   filename?: string;
   mimeType?: string;
+  status?: number;
   error?: string;
   details?: string;
 }
@@ -334,6 +335,7 @@ function parseMultipart(req: Request): Promise<ParseMultipartResult> {
 
     const timeoutId = setTimeout(() => {
       finalize({
+        status: 408,
         error: "Request timeout",
         details: "Upload timed out before multipart parsing completed",
       });
@@ -362,7 +364,7 @@ function parseMultipart(req: Request): Promise<ParseMultipartResult> {
     };
 
     const onRequestError = (err: Error) => {
-      finalize({ error: "Request stream error", details: err.message });
+      finalize({ status: 400, error: "Request stream error", details: err.message });
     };
 
     req.on("aborted", onAborted);
@@ -399,6 +401,7 @@ function parseMultipart(req: Request): Promise<ParseMultipartResult> {
           fileSize += chunk.length;
           if (fileSize > MAX_FILE_SIZE) {
             finalize({
+              status: 413,
               error: "File too large",
               details: `Audio file size exceeds ${MAX_FILE_SIZE / 1024 / 1024}MB limit`,
             });
@@ -413,12 +416,12 @@ function parseMultipart(req: Request): Promise<ParseMultipartResult> {
         });
 
         file.on("error", (err: Error) => {
-          finalize({ error: "File upload error", details: err.message });
+          finalize({ status: 400, error: "File upload error", details: err.message });
         });
       });
 
       parser.on("error", (err: Error) => {
-        finalize({ error: "Failed to parse multipart data", details: err.message });
+        finalize({ status: 400, error: "Failed to parse multipart data", details: err.message });
       });
 
       parser.on("close", () => {
@@ -426,6 +429,7 @@ function parseMultipart(req: Request): Promise<ParseMultipartResult> {
 
         if (!sawCandidateField || !selectedFile) {
           finalize({
+            status: 400,
             error: "No audio file found in request",
             details: "Use multipart/form-data with field name 'audio' or 'file'",
           });
@@ -442,7 +446,7 @@ function parseMultipart(req: Request): Promise<ParseMultipartResult> {
       req.pipe(parser);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      finalize({ error: "Failed to parse multipart data", details: message });
+      finalize({ status: 400, error: "Failed to parse multipart data", details: message });
     }
   });
 }
@@ -520,6 +524,50 @@ function buildReadinessBody(result: ReadinessCheckResult): Record<string, unknow
     model_loaded: true,
     ...(result.modelVersion ? { model_version: result.modelVersion } : {}),
     ...(result.device ? { device: result.device } : {}),
+  };
+}
+
+function mapBackendFailureToGatewayResponse(failure: BackendForwardFailure): {
+  status: number;
+  error: string;
+  details?: string;
+} {
+  if (failure.status === 400 || failure.status === 422) {
+    return {
+      status: 400,
+      error: failure.error || "Invalid audio input",
+      details: failure.details,
+    };
+  }
+
+  if (failure.status === 413) {
+    return {
+      status: 413,
+      error: failure.error || "File too large",
+      details: failure.details,
+    };
+  }
+
+  if (failure.status === 503) {
+    return {
+      status: 503,
+      error: failure.error || "Model service not ready",
+      details: failure.details,
+    };
+  }
+
+  if (failure.status >= 500) {
+    return {
+      status: 500,
+      error: "Inference backend internal error",
+      details: failure.details || failure.error,
+    };
+  }
+
+  return {
+    status: 502,
+    error: "Unexpected response from inference backend",
+    details: failure.details || failure.error,
   };
 }
 
@@ -628,7 +676,7 @@ export async function startServer(): Promise<Server> {
 
     const parseResult = await parseMultipart(req);
     if (parseResult.error) {
-      sendError(res, 400, parseResult.error, parseResult.details);
+      sendError(res, parseResult.status ?? 400, parseResult.error, parseResult.details);
       return;
     }
 
@@ -661,8 +709,8 @@ export async function startServer(): Promise<Server> {
     );
 
     if (!forwarded.ok) {
-      const status = forwarded.status >= 500 ? 503 : forwarded.status;
-      sendError(res, status, forwarded.error, forwarded.details);
+      const mapped = mapBackendFailureToGatewayResponse(forwarded);
+      sendError(res, mapped.status, mapped.error, mapped.details);
       return;
     }
 

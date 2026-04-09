@@ -20,6 +20,16 @@ export interface ApiError {
   details?: string;
 }
 
+export class ApiRequestError extends Error {
+  status?: number;
+
+  constructor(message: string, status?: number) {
+    super(message);
+    this.name = "ApiRequestError";
+    this.status = status;
+  }
+}
+
 export interface HealthzResponse {
   status: "alive";
   timestamp: string;
@@ -82,38 +92,82 @@ class ApiClient {
             resolve(JSON.parse(xhr.responseText) as ApiPredictionResponse);
             return;
           } catch {
-            reject(new Error("Invalid response format from server"));
+            reject(new ApiRequestError("Invalid response format from server", 502));
             return;
           }
         }
 
-        if (xhr.status === 503) {
-          reject(new Error("Model service temporarily unavailable. Please try again later."));
-          return;
+        let parsedError: ApiError | null = null;
+        try {
+          parsedError = JSON.parse(xhr.responseText) as ApiError;
+        } catch {
+          parsedError = null;
         }
 
         if (xhr.status === 400) {
-          try {
-            const error = JSON.parse(xhr.responseText) as ApiError;
-            reject(new Error(error.details || error.error || "Invalid audio format"));
-            return;
-          } catch {
-            reject(new Error("Invalid audio format"));
-            return;
-          }
+          reject(
+            new ApiRequestError(
+              parsedError?.details || parsedError?.error || "Invalid audio request",
+              400
+            )
+          );
+          return;
         }
 
-        reject(new Error(`Server error: ${xhr.status} ${xhr.statusText}`));
+        if (xhr.status === 413) {
+          reject(
+            new ApiRequestError(
+              parsedError?.details ||
+                parsedError?.error ||
+                "Audio file is too large. Maximum size is 10MB.",
+              413
+            )
+          );
+          return;
+        }
+
+        if (xhr.status === 503) {
+          reject(
+            new ApiRequestError(
+              parsedError?.details ||
+                parsedError?.error ||
+                "Model service is not ready. Please try again shortly.",
+              503
+            )
+          );
+          return;
+        }
+
+        if (xhr.status === 500) {
+          reject(
+            new ApiRequestError(
+              parsedError?.details ||
+                parsedError?.error ||
+                "Inference service encountered an internal error.",
+              500
+            )
+          );
+          return;
+        }
+
+        reject(
+          new ApiRequestError(
+            parsedError?.details ||
+              parsedError?.error ||
+              `Server error: ${xhr.status} ${xhr.statusText}`,
+            xhr.status
+          )
+        );
       };
 
       xhr.onerror = () => {
         if (timeoutId) clearTimeout(timeoutId);
-        reject(new Error("Network error. Please check your connection."));
+        reject(new ApiRequestError("Network error. Please check your connection."));
       };
 
       xhr.onabort = () => {
         if (timeoutId) clearTimeout(timeoutId);
-        reject(new Error("Request cancelled"));
+        reject(new ApiRequestError("Request cancelled"));
       };
 
       xhr.open("POST", `${this.baseUrl}/predict`);
@@ -150,7 +204,7 @@ class ApiClient {
     }
 
     if (!response.ok) {
-      throw new Error(`Readiness check failed: ${response.statusText}`);
+      throw new ApiRequestError(`Readiness check failed: ${response.statusText}`, response.status);
     }
 
     return (await response.json()) as ReadinessResponse;
