@@ -410,6 +410,14 @@ function parseMultipart(req: Request): Promise<ParseMultipartResult> {
           chunks.push(chunk);
         });
 
+        file.on("limit", () => {
+          finalize({
+            status: 413,
+            error: "File too large",
+            details: `Audio file size exceeds ${MAX_FILE_SIZE / 1024 / 1024}MB limit`,
+          });
+        });
+
         file.on("end", () => {
           if (settled) return;
           selectedFile = Buffer.concat(chunks);

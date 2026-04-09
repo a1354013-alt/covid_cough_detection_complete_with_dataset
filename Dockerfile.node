@@ -3,8 +3,8 @@ FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# Install pnpm
-RUN npm install -g pnpm
+# Enable Corepack (pnpm version is pinned by packageManager in package.json)
+RUN corepack enable
 
 # Copy workspace configuration
 COPY pnpm-workspace.yaml ./
@@ -20,17 +20,17 @@ COPY client/tsconfig.json ./client/
 COPY server/tsconfig.json ./server/
 
 # Install dependencies with pnpm workspace
-RUN pnpm install --frozen-lockfile
+RUN corepack pnpm install --frozen-lockfile
 
 # Copy source code
 COPY client ./client
 COPY server ./server
 
 # Build client
-RUN pnpm --filter ./client run build
+RUN corepack pnpm --filter ./client run build
 
 # Build server
-RUN pnpm --filter ./server run build
+RUN corepack pnpm --filter ./server run build
 
 # Copy client build output to server public directory
 # This ensures the server can serve the frontend static files
@@ -38,7 +38,7 @@ RUN mkdir -p server/dist/public && \
     cp -r client/dist/* server/dist/public/
 
 # Prune production dependencies only
-RUN pnpm prune --prod
+RUN corepack pnpm prune --prod
 
 # Production stage
 FROM node:18-alpine

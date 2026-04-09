@@ -97,9 +97,10 @@ Success (`200`):
 Common error statuses:
 
 - `400`: malformed multipart, missing file, invalid format, extension mismatch
-- `413`: file too large from Python backend
+- `413`: file too large (either Node upload guard or Python backend limit)
 - `429`: rate limit exceeded
-- `503`: Python/model service unavailable
+- `500`: inference backend internal error
+- `503`: model service not ready/unavailable
 
 ### 3.5 `GET /api/version`
 Version metadata with graceful degradation if Python is unavailable.
@@ -127,7 +128,20 @@ Success (`200`):
 Liveness endpoint.
 
 ### 4.2 `GET /readyz`
-Readiness endpoint. Returns `503` if model is not ready.
+Readiness endpoint. Returns `503` with the same JSON shape as success when model is not ready.
+
+Not ready (`503`) example:
+
+```json
+{
+  "status": "not_ready",
+  "model_loaded": false,
+  "model_version": null,
+  "device": "cpu",
+  "error": "Inference service not initialized",
+  "timestamp": "2026-04-09T00:00:00.000Z"
+}
+```
 
 ### 4.3 `GET /health`
 Backward-compatible mirror of `/readyz`.
@@ -144,5 +158,6 @@ Direct inference endpoint (normally called by Node gateway).
 ## 5. Contract Notes
 
 - Python backend runs in strict startup mode: missing/invalid `MODEL_PATH` prevents process startup.
+- Node keeps backward-compatible normalization for legacy `{\"detail\": ...}` Python errors, but canonical contract is flat JSON (`error`, `details`).
 - Frontend should check `/api/readyz` before enabling analyze actions.
 - This project is for demo/research workflow and is not a medical diagnosis tool.

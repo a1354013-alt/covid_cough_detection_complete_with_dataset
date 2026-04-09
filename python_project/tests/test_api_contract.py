@@ -1,5 +1,3 @@
-import pytest
-from fastapi import HTTPException
 from pathlib import Path
 import sys
 import types
@@ -63,9 +61,11 @@ def test_readyz_not_ready_contract():
     original = app_module.model_inference
     app_module.model_inference = _NotReadyModel()
     try:
-        with pytest.raises(HTTPException) as exc:
-            asyncio.run(app_module.readyz())
-        assert exc.value.status_code == 503
+        result = asyncio.run(app_module.readyz())
+        assert result.status_code == 503
+        payload = result.body.decode("utf-8")
+        assert "not_ready" in payload
+        assert "model unavailable" in payload
     finally:
         app_module.model_inference = original
 

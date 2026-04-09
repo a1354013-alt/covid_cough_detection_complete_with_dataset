@@ -32,6 +32,7 @@ This guide describes the current deployable path for this repository.
 From repository root:
 
 ```bash
+corepack enable
 corepack pnpm install --frozen-lockfile
 corepack pnpm build
 corepack pnpm start
@@ -52,6 +53,7 @@ python_project/models/model.pt
 ```
 
 Compose maps this path into Python container as `/app/models/model.pt`.
+If this file is missing, `python-backend` stays unhealthy by design because readiness is model-gated.
 
 ## 4.2 Build and run
 

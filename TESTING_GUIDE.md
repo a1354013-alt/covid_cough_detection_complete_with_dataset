@@ -42,16 +42,23 @@ python -m compileall src
 
 ### Node (`server/src/index.test.ts`)
 - `GET /api/healthz` returns alive
-- `GET /api/readyz` returns `503` when Python backend is unreachable
+- `GET /api/readyz` mirrors Python readiness `503`
 - `POST /api/predict` non-multipart request returns stable `400` error contract
+- `POST /api/predict` oversized upload returns `413`
+- `POST /api/predict` invalid format and extension/magic mismatch return `400`
+- `POST /api/predict` Python `400/413/503/500` are translated to stable gateway semantics
 
-### Client (`client/src/lib/api.test.ts`)
+### Client (`client/src/lib/api.test.ts`, `client/src/pages/home-state.test.ts`)
 - `formatPrediction` mapping is stable
+- backend-not-ready flow keeps analyze disabled
+- uploading → analyzing → success state transitions
+- error → reset → retry recovery flow
 
-### Python (`python_project/tests/test_api_contract.py`)
+### Python (`python_project/tests/test_api_contract.py`, `python_project/tests/test_audio_processor_edge_cases.py`)
 - `/healthz` contract
 - `/readyz` ready and not-ready behavior
 - `/version` response contract
+- audio processor rejects invalid bytes, silence-only, too-short, and low-amplitude inputs
 
 ## 4. Optional Manual Contract Smoke
 

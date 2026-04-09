@@ -5,6 +5,8 @@ node_modules/
 
 # Build artifacts
 dist/
+client/dist/
+server/dist/
 build/
 **/dist/
 **/build/
@@ -15,10 +17,13 @@ coverage/
 
 # Python artifacts
 __pycache__/
+python_project/__pycache__/
+python_project/src/__pycache__/
 *.py[cod]
 *.pyo
 *.pyd
 .pytest_cache/
+python_project/.pytest_cache/
 .mypy_cache/
 .ruff_cache/
 .tox/

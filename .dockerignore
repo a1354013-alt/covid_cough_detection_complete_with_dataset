@@ -9,12 +9,15 @@ node_modules/
 venv/
 env/
 __pycache__/
+python_project/__pycache__/
 *.pyc
 *.pyo
 *.egg-info/
 
 # Build outputs
 dist/
+client/dist/
+server/dist/
 build/
 .next/
 .nuxt/
@@ -54,6 +57,7 @@ pnpm-debug.log*
 # Test coverage
 coverage/
 .nyc_output/
+python_project/.pytest_cache/
 
 # Temporary files
 *.tmp
@@ -65,6 +69,11 @@ coverage/
 # Archives
 *.tar.gz
 *.zip
+*.tgz
+
+# Model and local data artifacts (mounted at runtime, not baked into image)
+python_project/models/
+python_project/data/
 
 # CI/CD
 .github/

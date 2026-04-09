@@ -22,6 +22,7 @@ shared/           Shared constants and version metadata
 - Node.js 18+
 - Python 3.8+
 - `corepack` enabled (comes with modern Node versions)
+- pnpm is pinned via `packageManager` in root `package.json` (`pnpm@10.33.0`)
 
 ## Local Development
 
@@ -128,6 +129,12 @@ docker compose up --build
 Services:
 - Node gateway: `http://localhost:3000`
 - Python backend: `http://localhost:8000`
+
+### Strict Model Requirement
+
+- This repository does **not** ship a production model artifact.
+- You must provide `python_project/models/model.pt` before expecting readiness.
+- If model is missing or invalid, Python container startup/readiness failure is expected behavior (not a bug).
 
 ## Notes
 

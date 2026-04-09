@@ -8,6 +8,7 @@ This service performs audio preprocessing and model inference for the cough dete
 - `MODEL_PATH` is mandatory.
 - If the model file is missing or cannot be loaded, process startup fails immediately.
 - There is no demo/stub prediction fallback in this backend.
+- This repository does not bundle a production `model.pt`; provide it yourself.
 
 ## Setup
 
@@ -33,6 +34,7 @@ python -m uvicorn src.app:app --host 0.0.0.0 --port 8000 --reload
 
 - `GET /healthz` - liveness
 - `GET /readyz` - readiness (model loaded)
+- `GET /readyz` returns a consistent JSON shape for both `200` and `503`
 - `GET /health` - backward-compatible readiness mirror
 - `GET /version`
 - `POST /predict` (`multipart/form-data`, field: `file`)
