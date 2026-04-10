@@ -3,6 +3,7 @@ import { describe, it } from "node:test";
 import {
   canAnalyze,
   createInitialHomeFlowState,
+  getSignalPresentation,
   homeFlowReducer,
   isBusy,
 } from "./home-state";
@@ -88,5 +89,33 @@ describe("home-flow reducer", () => {
     const retry = homeFlowReducer(reset, { type: "RECORDING_STARTED" });
     assert.equal(retry.phase, "recording");
     assert.equal(retry.error, null);
+  });
+
+  it("maps positive and negative results to stable semantic colors", () => {
+    const positive = getSignalPresentation({
+      rawLabel: "positive",
+      confidenceValue: 81,
+      displayLabel: "Possible Positive Signal",
+      confidenceText: "81%",
+      modelVersion: "trained-1.0",
+      timestamp: new Date("2026-04-09T00:00:00.000Z"),
+      processingTimeMs: 100,
+    });
+    const negative = getSignalPresentation({
+      rawLabel: "negative",
+      confidenceValue: 64,
+      displayLabel: "Possible Negative Signal",
+      confidenceText: "64%",
+      modelVersion: "trained-1.0",
+      timestamp: new Date("2026-04-09T00:00:01.000Z"),
+      processingTimeMs: 120,
+    });
+
+    assert.match(positive.title, /Possible Positive Signal/);
+    assert.match(positive.toneTextClass, /text-red/);
+    assert.match(positive.toneBarClass, /bg-red/);
+    assert.match(negative.title, /Possible Negative Signal/);
+    assert.match(negative.toneTextClass, /text-green/);
+    assert.match(negative.toneBarClass, /bg-green/);
   });
 });

@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Audio format conversion utilities.
  *
  * Conversion is best-effort:

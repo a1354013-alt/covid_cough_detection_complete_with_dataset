@@ -29,6 +29,14 @@ export interface HomeFlowState {
   };
 }
 
+export interface SignalPresentation {
+  title: string;
+  toneIconClass: string;
+  toneTextClass: string;
+  toneBarClass: string;
+  toneContainerClass: string;
+}
+
 export type HomeFlowAction =
   | { type: "BACKEND_CHECKING"; message: string }
   | { type: "BACKEND_READY"; message: string }
@@ -174,6 +182,7 @@ export function homeFlowReducer(state: HomeFlowState, action: HomeFlowAction): H
         ...state,
         phase: "error",
         uploadProgress: 0,
+        prediction: null,
         error: action.message,
       };
 
@@ -192,4 +201,18 @@ export function canAnalyze(state: HomeFlowState): boolean {
       state.backend.status === "ready" &&
       !isBusy(state.phase)
   );
+}
+
+export function getSignalPresentation(prediction: UIPredictionResult): SignalPresentation {
+  const isPositive = prediction.rawLabel === "positive";
+
+  return {
+    title: prediction.displayLabel,
+    toneIconClass: isPositive ? "text-red-600" : "text-green-600",
+    toneTextClass: isPositive ? "text-red-700" : "text-green-700",
+    toneBarClass: isPositive ? "bg-red-600" : "bg-green-600",
+    toneContainerClass: isPositive
+      ? "border-red-200 bg-gradient-to-r from-red-50 to-rose-50"
+      : "border-green-200 bg-gradient-to-r from-green-50 to-emerald-50",
+  };
 }

@@ -1,4 +1,4 @@
-﻿import express, { NextFunction, Request, Response } from "express";
+import express, { NextFunction, Request, Response } from "express";
 import { createServer, Server } from "node:http";
 import { existsSync } from "node:fs";
 import path from "node:path";
@@ -34,6 +34,12 @@ interface ParseMultipartResult {
 
 interface RateLimitEntry {
   count: number;
+  resetAt: number;
+}
+
+interface RateLimitResult {
+  allowed: boolean;
+  remaining: number;
   resetAt: number;
 }
 
@@ -166,18 +172,28 @@ function getRateLimitKey(req: Request): string {
   return req.ip || req.socket.remoteAddress || "unknown";
 }
 
-function checkRateLimit(req: Request): boolean {
+function checkRateLimit(req: Request): RateLimitResult {
   const key = getRateLimitKey(req);
   const now = Date.now();
 
   const existing = rateLimitMap.get(key);
   if (!existing || existing.resetAt <= now) {
-    rateLimitMap.set(key, { count: 1, resetAt: now + RATE_LIMIT_WINDOW_MS });
-    return true;
+    const resetAt = now + RATE_LIMIT_WINDOW_MS;
+    rateLimitMap.set(key, { count: 1, resetAt });
+    return {
+      allowed: true,
+      remaining: Math.max(0, RATE_LIMIT_MAX_REQUESTS - 1),
+      resetAt,
+    };
   }
 
   existing.count += 1;
-  return existing.count <= RATE_LIMIT_MAX_REQUESTS;
+  const remaining = Math.max(0, RATE_LIMIT_MAX_REQUESTS - existing.count);
+  return {
+    allowed: existing.count <= RATE_LIMIT_MAX_REQUESTS,
+    remaining,
+    resetAt: existing.resetAt,
+  };
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -232,9 +248,23 @@ function errorFromPythonPayload(payload: Record<string, unknown>): {
 function sendError(res: Response, status: number, error: string, details?: string): void {
   const body: ErrorResponse = {
     error,
-    ...(isDev && details ? { details } : {}),
+    ...(details ? { details } : {}),
   };
   res.status(status).json(body);
+}
+
+function setRateLimitHeaders(res: Response, result: RateLimitResult): number {
+  const resetInSeconds = Math.max(1, Math.ceil((result.resetAt - Date.now()) / 1000));
+  const remaining = Math.max(0, result.remaining);
+
+  res.setHeader("RateLimit-Limit", RATE_LIMIT_MAX_REQUESTS.toString());
+  res.setHeader("RateLimit-Remaining", remaining.toString());
+  res.setHeader("RateLimit-Reset", resetInSeconds.toString());
+  res.setHeader("X-RateLimit-Limit", RATE_LIMIT_MAX_REQUESTS.toString());
+  res.setHeader("X-RateLimit-Remaining", remaining.toString());
+  res.setHeader("X-RateLimit-Reset", resetInSeconds.toString());
+
+  return resetInSeconds;
 }
 
 function resolveClientPublicDir(): string | null {
@@ -374,9 +404,17 @@ function parseMultipart(req: Request): Promise<ParseMultipartResult> {
       parser = Busboy({
         headers: req.headers,
         limits: {
-          files: 8,
+          files: 1,
           fileSize: MAX_FILE_SIZE,
         },
+      });
+
+      parser.on("filesLimit", () => {
+        finalize({
+          status: 400,
+          error: "Only one audio file is allowed",
+          details: "Upload exactly one file using field name 'audio' or 'file'",
+        });
       });
 
       parser.on("file", (fieldname: string, file: NodeJS.ReadableStream, info: FileInfo) => {
@@ -672,7 +710,11 @@ export async function startServer(): Promise<Server> {
   app.post("/api/predict", async (req: Request, res: Response) => {
     const startTime = Date.now();
 
-    if (!checkRateLimit(req)) {
+    const rateLimit = checkRateLimit(req);
+    const resetInSeconds = setRateLimitHeaders(res, rateLimit);
+
+    if (!rateLimit.allowed) {
+      res.setHeader("Retry-After", resetInSeconds.toString());
       sendError(
         res,
         429,

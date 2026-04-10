@@ -1,14 +1,14 @@
 # Python Backend (FastAPI Inference Service)
 
-This service performs audio preprocessing and model inference for the cough detection system.
+This service performs audio preprocessing and model inference for cough risk signal analysis.
 
 ## Strict Startup Contract
 
-- The service runs in strict mode.
+- Service runs in strict startup mode.
 - `MODEL_PATH` is mandatory.
-- If the model file is missing or cannot be loaded, process startup fails immediately.
-- There is no demo/stub prediction fallback in this backend.
-- This repository does not bundle a production `model.pt`; provide it yourself.
+- Missing or invalid model causes startup failure (fail-fast).
+- No demo/stub prediction fallback is available in this backend.
+- Repository does not bundle a production `model.pt`; provide your own artifact.
 
 ## Setup
 
@@ -20,6 +20,7 @@ python -m venv .venv
 # source .venv/bin/activate
 
 pip install -r requirements.txt
+pip install -r requirements-dev.txt
 ```
 
 ## Run
@@ -33,30 +34,49 @@ python -m uvicorn src.app:app --host 0.0.0.0 --port 8000 --reload
 ## Endpoints
 
 - `GET /healthz` - liveness
-- `GET /readyz` - readiness (model loaded)
-- `GET /readyz` returns a consistent JSON shape for both `200` and `503`
+- `GET /readyz` - readiness (model-loaded gate)
 - `GET /health` - backward-compatible readiness mirror
-- `GET /version`
+- `GET /version` - API/model version + readiness state
 - `POST /predict` (`multipart/form-data`, field: `file`)
 
-Prediction response:
+Prediction success response:
 
 ```json
 {
   "label": "positive",
   "prob": 0.82,
-  "model_version": "trained-1.0",
+  "model_version": "checkpoint-2026.04",
   "processing_time_ms": 214.3
 }
 ```
 
+Error response contract:
+
+```json
+{
+  "error": "Human readable summary",
+  "details": "Optional extra context"
+}
+```
+
+## Model Version Contract
+
+- `model_version` is read from checkpoint metadata when available.
+- Accepted metadata keys include:
+  - top-level `model_version` / `version`
+  - `metadata.model_version` / `metadata.version`
+- If no metadata is found, fallback is `"unknown"`.
+
 ## Environment Variables
 
-- `MODEL_PATH`: path to trained model file
+- `MODEL_PATH`: path to trained model file (**required**)
 - `ALLOWED_ORIGINS`: comma-separated CORS origins (`*` by default)
 
 ## Validation
 
 ```bash
+python -m pytest tests -q
 python -m compileall src
 ```
+
+This backend is for research/demo risk signaling and is **not** a medical diagnosis service.

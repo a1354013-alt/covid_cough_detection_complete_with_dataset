@@ -1,18 +1,25 @@
-// App configuration
-export const APP_NAME = "COVID-19 Cough Detection";
-// APP_VERSION is injected at build time from shared/version.ts
+export const APP_NAME = "COVID-19 Cough Signal Analysis";
+export const APP_SUBTITLE = "AI-powered cough risk signal analysis";
 
-// Shared constants
-export const COOKIE_NAME = "app_session_id";
-export const ONE_YEAR_MS = 1000 * 60 * 60 * 24 * 365;
-
-// API configuration
 export const API_BASE_URL = "/api";
 
-// Audio recording configuration
 export const AUDIO_CONFIG = {
-  MAX_RECORDING_TIME: 30, // seconds
-  MIN_RECORDING_TIME: 2, // seconds
-  SAMPLE_RATE: 44100,
-  CHANNELS: 1,
+  maxRecordingTimeSeconds: 30,
+  minRecordingTimeSeconds: 2,
+  maxFileSizeBytes: 10 * 1024 * 1024,
+  sampleRate: 44100,
+  channels: 1,
 } as const;
+
+export const SUPPORTED_BACKEND_MIME_PREFIXES = [
+  "audio/webm",
+  "audio/ogg",
+  "audio/mpeg",
+  "audio/wav",
+] as const;
+
+export const PREFERRED_RECORDER_MIME_TYPES = [
+  "audio/webm;codecs=opus",
+  "audio/webm",
+  "audio/ogg",
+] as const;

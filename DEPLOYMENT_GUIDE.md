@@ -1,33 +1,41 @@
-﻿# Deployment Guide
+# Deployment Guide
 
-This guide describes the current deployable path for this repository.
+This guide describes the production deployment contract for this repository.
 
-## 1. Production Contract
+## 1. Deployment Topology
 
-- Public entrypoint: Node service (`PORT`, default `3000`)
-- Node serves both:
-  - `/api/*` (gateway endpoints)
-  - frontend static build with SPA fallback
-- Python service must be reachable from Node via `PYTHON_API_URL`
-- Python startup is strict: `MODEL_PATH` must point to a valid model file
+- Public entrypoint: Node gateway (`PORT`, default `3000`)
+- Node serves:
+  - `/api/*` gateway endpoints
+  - frontend static assets (`client/dist`) with SPA fallback
+- Python inference service runs separately and is reached by Node via `PYTHON_API_URL`
 
-## 2. Required Runtime Inputs
+## 2. Strict Model Startup Contract
 
-### Node environment
+Python backend runs in strict startup mode:
+- `MODEL_PATH` is required
+- model file must exist and be loadable
+- if model is missing/invalid, process startup fails (expected)
 
+This repository does **not** include a production model artifact.
+Provide your own `python_project/models/model.pt`.
+
+## 3. Required Environment Variables
+
+### Node
 - `PORT` (default `3000`)
 - `PYTHON_API_URL` (default `http://localhost:8000`)
-- `ALLOWED_ORIGINS` (required in production)
+- `ALLOWED_ORIGINS` (**required in production**)
 - `REQUEST_TIMEOUT` (default `60000`)
 - `RATE_LIMIT_MAX_REQUESTS` (default `30`)
 - `TRUST_PROXY` (default `1` in production)
+- `CSP_CONNECT_SRC_EXTRA` (optional)
 
-### Python environment
-
-- `MODEL_PATH` (required)
+### Python
+- `MODEL_PATH` (**required**)
 - `ALLOWED_ORIGINS` (optional, default `*`)
 
-## 3. Local Production-Like Build
+## 4. Build and Run Locally (Production-like)
 
 From repository root:
 
@@ -39,23 +47,24 @@ corepack pnpm start
 ```
 
 Notes:
-- `corepack pnpm start` starts Node (`server/dist/index.js`).
-- In non-Docker local mode, Node serves static UI only if `client/dist` exists.
+- `corepack pnpm start` launches Node (`server/dist/index.js`).
+- Node serves frontend only when static build exists (`client/dist` copied into deployment image or available locally).
 
-## 4. Docker Compose (Recommended)
+## 5. Docker Compose (Recommended)
 
-## 4.1 Prepare model file
+### 5.1 Prepare model file
 
-Place a trained model at:
+Place model artifact at:
 
 ```text
 python_project/models/model.pt
 ```
 
-Compose maps this path into Python container as `/app/models/model.pt`.
-If this file is missing, `python-backend` stays unhealthy by design because readiness is model-gated.
+Compose maps this directory into Python container:
+- host: `./python_project/models`
+- container: `/app/models`
 
-## 4.2 Build and run
+### 5.2 Build and run
 
 ```bash
 docker compose up --build
@@ -65,13 +74,14 @@ Services:
 - Node: [http://localhost:3000](http://localhost:3000)
 - Python: [http://localhost:8000](http://localhost:8000)
 
-Health checks:
-- Node: `GET /api/healthz`
-- Python: `GET /readyz`
+Health/readiness:
+- Python container healthcheck: `GET /readyz`
+- Node container healthcheck: `GET /api/healthz`
+- `node-backend` depends on `python-backend` with `condition: service_healthy`
 
-`node-backend` depends on healthy `python-backend`.
+If model is missing, Python service startup/readiness failure is expected and Node will not be marked ready for inference.
 
-## 5. Smoke Verification
+## 6. Verification Checklist
 
 ```bash
 curl -f http://localhost:3000/api/healthz
@@ -79,18 +89,23 @@ curl -f http://localhost:3000/api/readyz
 curl -f http://localhost:3000/api/version
 ```
 
-A ready deployment should return `200` for all three.
+For readiness-gated deployments, `/api/readyz` must be `200` before exposing traffic.
 
-## 6. Security Notes
+## 7. Security Baseline
 
-- Configure `ALLOWED_ORIGINS` explicitly in production.
-- Node sets CSP, frame, content-type, and referrer-policy headers.
-- If running behind reverse proxy, set `TRUST_PROXY` appropriately.
+- Production must define explicit `ALLOWED_ORIGINS`.
+- Node emits CSP and security headers.
+- Node gateway enforces request rate limiting for `/api/predict`.
+- Keep reverse-proxy trust (`TRUST_PROXY`) aligned with your ingress setup.
 
-## 7. Release Checklist
+## 8. Release Checklist
 
-1. Run quality gates (`check`, `lint`, `build`, `test`, `check:version`).
-2. Run Python syntax gate (`python -m compileall python_project/src`).
-3. Ensure model artifact exists and matches expected model version.
-4. Verify `/api/readyz` and `/api/predict` in target environment.
-5. Publish only source + configuration (no build outputs or node_modules).
+1. `corepack pnpm check`
+2. `corepack pnpm lint`
+3. `corepack pnpm build`
+4. `corepack pnpm test`
+5. `corepack pnpm check:version`
+6. `python -m pytest python_project/tests -q`
+7. `python -m compileall python_project/src`
+8. Confirm model artifact availability in deployment environment
+9. Confirm `/api/readyz` and `/api/predict` behavior in target runtime

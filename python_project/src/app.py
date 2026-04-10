@@ -12,9 +12,10 @@ from datetime import datetime, timezone
 import logging
 import os
 import time
-from typing import Optional
+from typing import Any, Literal, Optional
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -35,10 +36,15 @@ model_inference: Optional[ModelInference] = None
 
 
 class PredictionResponse(BaseModel):
-    label: str
+    label: Literal["positive", "negative"]
     prob: float
     model_version: str
     processing_time_ms: float
+
+
+class ErrorResponse(BaseModel):
+    error: str
+    details: Optional[str] = None
 
 
 class HealthResponse(BaseModel):
@@ -75,11 +81,37 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(
-    title="COVID-19 Cough Detection API",
-    description="AI-powered COVID-19 detection from cough audio",
+    title="COVID-19 Cough Signal API",
+    description="Research API for cough risk signal estimation (not medical diagnosis)",
     version=APP_VERSION,
     lifespan=lifespan,
 )
+
+
+def error_response(status_code: int, error: str, details: Optional[str] = None) -> JSONResponse:
+    payload: dict[str, str] = {"error": error}
+    if details:
+        payload["details"] = details
+    return JSONResponse(status_code=status_code, content=payload)
+
+
+def normalize_exception_detail(detail: Any) -> tuple[str, Optional[str]]:
+    if isinstance(detail, dict):
+        error = detail.get("error")
+        details = detail.get("details")
+        if isinstance(error, str) and error:
+            return error, details if isinstance(details, str) and details else None
+        if isinstance(details, str) and details:
+            return details, None
+        return "Request failed", None
+
+    if isinstance(detail, list):
+        return "Invalid request payload", str(detail)
+
+    if isinstance(detail, str) and detail:
+        return detail, None
+
+    return "Request failed", None
 
 allowed_origins = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "*").split(",")]
 app.add_middleware(
@@ -90,6 +122,23 @@ app.add_middleware(
     allow_headers=["Content-Type", "Authorization"],
     max_age=3600,
 )
+
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(_: Request, exc: HTTPException):
+    error, details = normalize_exception_detail(exc.detail)
+    return error_response(exc.status_code, error, details)
+
+
+@app.exception_handler(RequestValidationError)
+async def request_validation_exception_handler(_: Request, exc: RequestValidationError):
+    return error_response(400, "Invalid request payload", str(exc.errors()))
+
+
+@app.exception_handler(Exception)
+async def unexpected_exception_handler(_: Request, exc: Exception):
+    logger.exception("Unhandled API error", exc_info=exc)
+    return error_response(500, "Internal server error", "Unexpected backend failure")
 
 
 @app.get("/healthz")
@@ -189,7 +238,7 @@ async def predict(file: UploadFile = File(...)):
 @app.get("/")
 async def root():
     return {
-        "name": "COVID-19 Cough Detection API",
+        "name": "COVID-19 Cough Signal API",
         "version": APP_VERSION,
         "endpoints": {
             "healthz": "/healthz",

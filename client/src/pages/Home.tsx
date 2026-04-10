@@ -1,9 +1,17 @@
-﻿import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  APP_NAME,
+  APP_SUBTITLE,
+  AUDIO_CONFIG,
+  PREFERRED_RECORDER_MIME_TYPES,
+  SUPPORTED_BACKEND_MIME_PREFIXES,
+} from "@/const";
 import { ApiRequestError, apiClient, formatPrediction, getAudioFileName } from "@/lib/api";
 import {
   canAnalyze,
   createInitialHomeFlowState,
+  getSignalPresentation,
   homeFlowReducer,
   isBusy,
   type RecordingData,
@@ -19,12 +27,6 @@ import {
   Upload,
 } from "lucide-react";
 import { useEffect, useReducer, useRef } from "react";
-
-const MAX_RECORDING_TIME = 30;
-const MIN_RECORDING_TIME = 2;
-const MAX_FILE_SIZE = 10 * 1024 * 1024;
-const SUPPORTED_BACKEND_MIME_PREFIXES = ["audio/webm", "audio/ogg", "audio/mpeg", "audio/wav"];
-const PREFERRED_RECORDER_MIME_TYPES = ["audio/webm;codecs=opus", "audio/webm", "audio/ogg"];
 
 export default function Home() {
   const [state, dispatch] = useReducer(homeFlowReducer, undefined, createInitialHomeFlowState);
@@ -98,7 +100,8 @@ export default function Home() {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
-          sampleRate: 44100,
+          sampleRate: AUDIO_CONFIG.sampleRate,
+          channelCount: AUDIO_CONFIG.channels,
         },
       });
 
@@ -131,7 +134,7 @@ export default function Home() {
         const audioBlob = new Blob(audioChunksRef.current, { type: actualMimeType });
         const finalDuration = recordingTimeRef.current;
 
-        if (audioBlob.size > MAX_FILE_SIZE) {
+        if (audioBlob.size > AUDIO_CONFIG.maxFileSizeBytes) {
           clearRecordingBuffers();
           dispatch({
             type: "RECORDING_FAILED",
@@ -140,11 +143,11 @@ export default function Home() {
           return;
         }
 
-        if (finalDuration < MIN_RECORDING_TIME) {
+        if (finalDuration < AUDIO_CONFIG.minRecordingTimeSeconds) {
           clearRecordingBuffers();
           dispatch({
             type: "RECORDING_FAILED",
-            message: `Recording too short (${finalDuration}s). Minimum is ${MIN_RECORDING_TIME}s.`,
+            message: `Recording too short (${finalDuration}s). Minimum is ${AUDIO_CONFIG.minRecordingTimeSeconds}s.`,
           });
           return;
         }
@@ -177,7 +180,7 @@ export default function Home() {
         recordingTimeRef.current += 1;
         dispatch({ type: "RECORDING_TICK", seconds: recordingTimeRef.current });
 
-        if (recordingTimeRef.current >= MAX_RECORDING_TIME) {
+        if (recordingTimeRef.current >= AUDIO_CONFIG.maxRecordingTimeSeconds) {
           mediaRecorder.stop();
         }
       }, 1000);
@@ -238,13 +241,17 @@ export default function Home() {
   const busy = isBusy(state.phase);
   const recording = state.phase === "recording";
   const hasRecording = state.recordingData !== null;
+  const signalPresentation = state.prediction ? getSignalPresentation(state.prediction) : null;
+  const confidenceOpacity = state.prediction
+    ? Math.max(0.35, Math.min(1, state.prediction.confidenceValue / 100))
+    : 1;
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 px-4 py-12">
       <div className="mx-auto max-w-2xl">
         <div className="mb-8 text-center">
-          <h1 className="mb-2 text-4xl font-bold text-gray-900">COVID-19 Cough Detection</h1>
-          <p className="text-gray-600">AI-powered detection from cough audio</p>
+          <h1 className="mb-2 text-4xl font-bold text-gray-900">{APP_NAME}</h1>
+          <p className="text-gray-600">{APP_SUBTITLE}</p>
         </div>
 
         {(state.backend.status === "not_ready" ||
@@ -373,24 +380,18 @@ export default function Home() {
               )}
             </div>
 
-            {state.prediction && (
-              <div className="mt-8 rounded-lg border border-green-200 bg-gradient-to-r from-green-50 to-emerald-50 p-6">
+            {state.prediction && signalPresentation && (
+              <div className={`mt-8 rounded-lg border p-6 ${signalPresentation.toneContainerClass}`}>
                 <div className="mb-4 flex items-center gap-2">
-                  <CheckCircle2 className="h-6 w-6 text-green-600" />
+                  <CheckCircle2 className={`h-6 w-6 ${signalPresentation.toneIconClass}`} />
                   <h3 className="text-lg font-semibold text-gray-900">Analysis Result</h3>
                 </div>
 
                 <div className="space-y-3">
                   <div>
-                    <div className="text-sm text-gray-600">Prediction</div>
-                    <div
-                      className={`text-2xl font-bold ${
-                        state.prediction.rawLabel === "positive" ? "text-red-600" : "text-green-600"
-                      }`}
-                    >
-                      {state.prediction.rawLabel === "positive"
-                        ? "COVID-19 Positive"
-                        : "COVID-19 Negative"}
+                    <div className="text-sm text-gray-600">Risk Signal</div>
+                    <div className={`text-2xl font-bold ${signalPresentation.toneTextClass}`}>
+                      {signalPresentation.title}
                     </div>
                   </div>
 
@@ -401,10 +402,11 @@ export default function Home() {
                     </div>
                     <div className="mt-1 h-2 w-full rounded-full bg-gray-200">
                       <div
-                        className={`h-2 rounded-full transition-all ${
-                          state.prediction.confidenceValue > 70 ? "bg-red-600" : "bg-green-600"
-                        }`}
-                        style={{ width: state.prediction.confidenceText }}
+                        className={`h-2 rounded-full transition-all ${signalPresentation.toneBarClass}`}
+                        style={{
+                          width: state.prediction.confidenceText,
+                          opacity: confidenceOpacity,
+                        }}
                       />
                     </div>
                   </div>
@@ -419,7 +421,10 @@ export default function Home() {
         </Card>
 
         <div className="mt-8 text-center text-sm text-gray-600">
-          <p>This tool is for demonstration only and is not for medical diagnosis.</p>
+          <p>
+            This research demo provides cough risk signal estimates only and is not a medical
+            diagnosis tool.
+          </p>
         </div>
       </div>
     </div>

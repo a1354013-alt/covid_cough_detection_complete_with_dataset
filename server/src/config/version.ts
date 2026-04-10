@@ -1,18 +1,12 @@
 /**
- * Centralized Version Management
- * 
- * Single source of truth for application version.
- * Used by Node.js, Python, and client to ensure consistency.
+ * AUTO-GENERATED FILE.
+ * Source of truth: root package.json version.
+ * Run `corepack pnpm run sync:version` after version bumps.
  */
 
 export const APP_VERSION = "1.0.13";
 export const API_VERSION = "1.0.13";
 
-/**
- * Get version information with current timestamp
- * Timestamp is generated dynamically whenever getVersionInfo() is called,
- * not at deployment time or module load time.
- */
 export function getVersionInfo() {
   return {
     version: APP_VERSION,

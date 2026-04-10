@@ -9,13 +9,14 @@ Strict mode contract:
 
 from pathlib import Path
 import logging
-from typing import Dict, Optional, Tuple
+from typing import Any, Dict, Mapping, Optional, Tuple
 
 import numpy as np
 import torch
 import torch.nn as nn
 
 logger = logging.getLogger(__name__)
+DEFAULT_MODEL_VERSION = "unknown"
 
 
 class SimpleConvNet(nn.Module):
@@ -71,7 +72,7 @@ class ModelInference:
     def load_model(self, model_path: str) -> None:
         """Load a PyTorch model/checkpoint file."""
         try:
-            loaded = torch.load(model_path, map_location=self.device)
+            loaded = self._load_checkpoint(model_path)
             state_dict: Optional[Dict[str, torch.Tensor]] = None
 
             if isinstance(loaded, dict):
@@ -99,13 +100,43 @@ class ModelInference:
             assert self.model is not None
             self.model.to(self.device)
             self.model.eval()
-            self.model_version = "trained-1.0"
+            self.model_version = self._extract_model_version(loaded) or DEFAULT_MODEL_VERSION
             self.error_message = None
             logger.info("Successfully loaded model from %s", model_path)
         except Exception as exc:
             self.is_ready = False
             self.error_message = str(exc)
             raise RuntimeError(f"Model loading failed: {exc}") from exc
+
+    def _load_checkpoint(self, model_path: str) -> Any:
+        """Load checkpoint with best-effort safer defaults."""
+        try:
+            return torch.load(model_path, map_location=self.device, weights_only=True)
+        except TypeError:
+            logger.debug("weights_only not supported by installed torch; using default torch.load")
+            return torch.load(model_path, map_location=self.device)
+        except RuntimeError as exc:
+            logger.warning(
+                "weights_only checkpoint load failed, falling back to default torch.load: %s",
+                exc,
+            )
+            return torch.load(model_path, map_location=self.device)
+
+    def _extract_model_version(self, loaded: Any) -> Optional[str]:
+        if not isinstance(loaded, Mapping):
+            return None
+
+        direct_version = loaded.get("model_version") or loaded.get("version")
+        if isinstance(direct_version, str) and direct_version:
+            return direct_version
+
+        metadata = loaded.get("metadata")
+        if isinstance(metadata, Mapping):
+            meta_version = metadata.get("model_version") or metadata.get("version")
+            if isinstance(meta_version, str) and meta_version:
+                return meta_version
+
+        return None
 
     def predict(self, features: np.ndarray) -> Tuple[str, float]:
         if not self.is_ready or self.model is None:

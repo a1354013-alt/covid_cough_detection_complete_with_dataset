@@ -3,43 +3,65 @@ import path from "node:path";
 
 const root = process.cwd();
 
-const packageJson = JSON.parse(
-  fs.readFileSync(path.join(root, "package.json"), "utf8")
-);
-const sharedVersion = fs.readFileSync(
-  path.join(root, "shared", "version.ts"),
-  "utf8"
-);
-const serverVersion = fs.readFileSync(
-  path.join(root, "server", "src", "config", "version.ts"),
-  "utf8"
-);
-const pythonVersion = fs.readFileSync(
-  path.join(root, "python_project", "src", "version.py"),
-  "utf8"
-);
+function readJson(filePath) {
+  return JSON.parse(fs.readFileSync(filePath, "utf8"));
+}
 
-function extractTsVersion(content) {
-  const match = content.match(/APP_VERSION\s*=\s*["']([^"']+)["']/);
+function readText(filePath) {
+  return fs.readFileSync(filePath, "utf8");
+}
+
+function extractVersionConstant(content) {
+  const match = content.match(/APP_VERSION\s*=\s*[\"']([^\"']+)[\"']/);
   return match?.[1];
 }
 
-function extractPyVersion(content) {
-  const match = content.match(/APP_VERSION\s*=\s*["']([^"']+)["']/);
-  return match?.[1];
-}
+const rootVersion = readJson(path.join(root, "package.json")).version;
+const clientVersion = readJson(path.join(root, "client", "package.json")).version;
+const serverVersion = readJson(path.join(root, "server", "package.json")).version;
+const pyproject = readText(path.join(root, "python_project", "pyproject.toml"));
+const pyprojectVersionMatch = pyproject.match(/(^version\s*=\s*")([^"]+)(")/m);
+const pyprojectVersion = pyprojectVersionMatch?.[2];
 
-const versions = {
-  package: packageJson.version,
-  shared: extractTsVersion(sharedVersion),
-  server: extractTsVersion(serverVersion),
-  python: extractPyVersion(pythonVersion),
+const sharedContent = readText(path.join(root, "shared", "version.ts"));
+const serverContent = readText(path.join(root, "server", "src", "config", "version.ts"));
+const pythonContent = readText(path.join(root, "python_project", "src", "version.py"));
+
+const generatedMarker = "AUTO-GENERATED FILE.";
+const checks = {
+  "root package version": rootVersion,
+  "client package version": clientVersion,
+  "server package version": serverVersion,
+  "python pyproject version": pyprojectVersion,
+  "shared APP_VERSION": extractVersionConstant(sharedContent),
+  "server APP_VERSION": extractVersionConstant(serverContent),
+  "python APP_VERSION": extractVersionConstant(pythonContent),
 };
 
-const unique = [...new Set(Object.values(versions))];
-if (unique.length !== 1) {
-  console.error("Version mismatch detected:", versions);
+for (const [label, value] of Object.entries(checks)) {
+  if (value !== rootVersion) {
+    console.error(`Version mismatch: ${label}=${value} but root=${rootVersion}`);
+    process.exit(1);
+  }
+}
+
+if (!sharedContent.includes(generatedMarker)) {
+  console.error("shared/version.ts is missing generated marker. Run: corepack pnpm run sync:version");
   process.exit(1);
 }
 
-console.log(`Version consistency OK: ${unique[0]}`);
+if (!serverContent.includes(generatedMarker)) {
+  console.error(
+    "server/src/config/version.ts is missing generated marker. Run: corepack pnpm run sync:version"
+  );
+  process.exit(1);
+}
+
+if (!pythonContent.includes(generatedMarker)) {
+  console.error(
+    "python_project/src/version.py is missing generated marker. Run: corepack pnpm run sync:version"
+  );
+  process.exit(1);
+}
+
+console.log(`Version consistency OK: ${rootVersion}`);

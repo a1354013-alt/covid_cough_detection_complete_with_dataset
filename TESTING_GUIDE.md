@@ -1,6 +1,6 @@
-﻿# Testing Guide
+# Testing Guide
 
-This project uses a minimal but critical-path-focused test set.
+This repository uses a critical-path test set focused on delivery risk.
 
 ## 1. JavaScript/TypeScript Quality Gates
 
@@ -14,53 +14,61 @@ corepack pnpm test
 corepack pnpm check:version
 ```
 
-What these cover:
+Coverage:
 - `check`: TypeScript type checks (client + server)
-- `lint`: ESLint rules (client + server)
-- `build`: production builds for client + server
-- `test`: critical route tests and client API contract smoke test
-- `check:version`: version consistency across root/shared/server/python
+- `lint`: ESLint (client + server)
+- `build`: production builds (client + server)
+- `test`: Node gateway + client state/contract tests
+- `check:version`: validates generated version files and package version consistency
 
 ## 2. Python Gates
-
-Install Python dependencies first:
 
 ```bash
 cd python_project
 pip install -r requirements.txt
 pip install -r requirements-dev.txt
-```
-
-Then run:
-
-```bash
 python -m pytest tests -q
 python -m compileall src
 ```
 
-## 3. Implemented Test Scope
+## 3. Current Test Scope
 
 ### Node (`server/src/index.test.ts`)
-- `GET /api/healthz` returns alive
-- `GET /api/readyz` mirrors Python readiness `503`
-- `POST /api/predict` non-multipart request returns stable `400` error contract
-- `POST /api/predict` oversized upload returns `413`
-- `POST /api/predict` invalid format and extension/magic mismatch return `400`
-- `POST /api/predict` Python `400/413/503/500` are translated to stable gateway semantics
+- `GET /api/healthz` contract and security headers
+- `GET /api/health` and `GET /api/readyz` readiness semantics
+- `GET /api/version` success and Python-unreachable degradation
+- `OPTIONS /api/predict` CORS preflight handling
+- `POST /api/predict` success path
+- `POST /api/predict` rejection paths:
+  - non-multipart
+  - oversized file (`413`)
+  - unsupported format
+  - extension/magic mismatch
+  - multi-file upload (`400`)
+  - translated Python `400/413/503/500`
+- rate-limit contract (`429`) with `Retry-After` and rate-limit headers
+- SPA fallback for non-API HTML routes and stable API `404` envelope
 
 ### Client (`client/src/lib/api.test.ts`, `client/src/pages/home-state.test.ts`)
-- `formatPrediction` mapping is stable
-- backend-not-ready flow keeps analyze disabled
-- uploading → analyzing → success state transitions
-- error → reset → retry recovery flow
+- risk-signal wording (`Possible Positive Signal` / `Possible Negative Signal`)
+- diagnostic wording guard (no `COVID-19 Positive/Negative` in display labels)
+- backend-not-ready state disables analyze path
+- uploading → analyzing → success transitions
+- error → reset → retry recovery
+- positive/negative semantic color mapping stability
 
-### Python (`python_project/tests/test_api_contract.py`, `python_project/tests/test_audio_processor_edge_cases.py`)
-- `/healthz` contract
-- `/readyz` ready and not-ready behavior
-- `/version` response contract
-- audio processor rejects invalid bytes, silence-only, too-short, and low-amplitude inputs
+### Python (`python_project/tests/*.py`)
+- `/healthz`, `/readyz`, `/version` contract behavior
+- `/predict` success + validation error envelope behavior
+- strict startup fail-fast for missing/invalid model path
+- model version metadata extraction fallback behavior
+- audio processor edge cases:
+  - invalid bytes
+  - silence-only
+  - too short
+  - low amplitude
 
-## 4. Optional Manual Contract Smoke
+## 4. Optional Manual Smoke
 
 With services running:
 
@@ -71,10 +79,9 @@ curl -f http://localhost:3000/api/version
 curl -X POST http://localhost:3000/api/predict -F "audio=@./sample.wav"
 ```
 
-## 5. CI Recommendation
+## 5. CI Minimum Recommendation
 
-Minimum CI pipeline should fail on any non-zero result from:
-
+Fail pipeline on non-zero exit from:
 1. `corepack pnpm check`
 2. `corepack pnpm lint`
 3. `corepack pnpm build`

@@ -1,3 +1,5 @@
+import { API_BASE_URL } from "@/const";
+
 export interface ApiPredictionResponse {
   label: "positive" | "negative";
   prob: number;
@@ -126,6 +128,18 @@ class ApiClient {
           return;
         }
 
+        if (xhr.status === 429) {
+          reject(
+            new ApiRequestError(
+              parsedError?.details ||
+                parsedError?.error ||
+                "Too many requests. Please wait before trying again.",
+              429
+            )
+          );
+          return;
+        }
+
         if (xhr.status === 503) {
           reject(
             new ApiRequestError(
@@ -246,4 +260,4 @@ export function getAudioFileName(mimeType: string): string {
   return `cough-${timestamp}.webm`;
 }
 
-export const apiClient = new ApiClient("/api");
+export const apiClient = new ApiClient(API_BASE_URL);
