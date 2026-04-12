@@ -49,6 +49,8 @@ This regenerates and synchronizes:
 - `client/package.json` / `server/package.json` version fields
 - `python_project/pyproject.toml` version field
 
+The client imports `APP_VERSION` / `API_VERSION` from `shared/version.ts` (Vite alias `@shared/version`) so the UI stays aligned with the same generated constants as the Node gateway.
+
 ## Local Development
 
 1. Install JavaScript dependencies (repo root):
@@ -56,6 +58,8 @@ This regenerates and synchronizes:
 ```bash
 corepack pnpm install
 ```
+
+If pnpm reports **ignored build scripts** (for example `esbuild`), allow them so Vite can bundle: run `pnpm approve-builds` in the repo root and select the listed packages, or use the non-interactive approval flow documented in the [pnpm trust settings](https://pnpm.io/cli/approve-builds).
 
 2. Install Python dependencies:
 
@@ -130,6 +134,8 @@ python -m compileall python_project/src
 ```
 
 ## Docker Compose (Recommended Deploy Path)
+
+The Node production image installs **ffmpeg** so the gateway can perform best-effort conversion to WAV when the uploaded MIME type is not already WAV (same behavior as a local dev machine with ffmpeg on `PATH`).
 
 ```bash
 docker compose up --build

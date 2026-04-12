@@ -50,6 +50,14 @@ Notes:
 - `corepack pnpm start` launches Node (`server/dist/index.js`).
 - Node serves frontend only when static build exists (`client/dist` copied into deployment image or available locally).
 
+### pnpm and trusted build scripts
+
+In locked-down environments, `pnpm install` may skip dependency lifecycle scripts (for example `esbuild`). If `vite build` then fails or warns about native helpers, run `pnpm approve-builds` (see [pnpm approve-builds](https://pnpm.io/cli/approve-builds)) or adjust your org’s pnpm `onlyBuiltDependencies` policy.
+
+### Node gateway and ffmpeg
+
+The `Dockerfile.node` image includes **ffmpeg** so the gateway can convert non-WAV uploads to WAV before calling Python, matching local development when ffmpeg is installed. Without ffmpeg, the gateway still forwards the original bytes (best-effort fallback).
+
 ## 5. Docker Compose (Recommended)
 
 ### 5.1 Prepare model file

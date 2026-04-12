@@ -211,6 +211,30 @@ function normalizePythonPayload(payload: unknown): Record<string, unknown> {
   return detail ?? record;
 }
 
+function parseValidatedPredictionResponse(payload: unknown): PredictionResponse | null {
+  const record = asRecord(payload);
+  if (!record) return null;
+
+  const label = record.label;
+  if (label !== "positive" && label !== "negative") return null;
+
+  const prob = record.prob;
+  if (typeof prob !== "number" || !Number.isFinite(prob)) return null;
+
+  const modelVersion = record.model_version;
+  if (typeof modelVersion !== "string" || modelVersion.length === 0) return null;
+
+  const processingTimeMs = record.processing_time_ms;
+  if (typeof processingTimeMs !== "number" || !Number.isFinite(processingTimeMs)) return null;
+
+  return {
+    label,
+    prob,
+    model_version: modelVersion,
+    processing_time_ms: processingTimeMs,
+  };
+}
+
 function errorFromPythonPayload(payload: Record<string, unknown>): {
   error: string;
   details?: string;
@@ -602,6 +626,14 @@ function mapBackendFailureToGatewayResponse(failure: BackendForwardFailure): {
     };
   }
 
+  if (failure.status === 502) {
+    return {
+      status: 502,
+      error: failure.error || "Unexpected response from inference backend",
+      details: failure.details,
+    };
+  }
+
   if (failure.status >= 500) {
     return {
       status: 500,
@@ -658,7 +690,31 @@ async function forwardToPythonBackend(
       };
     }
 
-    const prediction = (await response.json()) as PredictionResponse;
+    let rawBody: unknown;
+    try {
+      rawBody = await response.json();
+    } catch {
+      return {
+        ok: false,
+        status: 502,
+        error: "Inference backend returned invalid JSON",
+      };
+    }
+
+    const prediction = parseValidatedPredictionResponse(rawBody);
+    if (!prediction) {
+      const snippet =
+        rawBody !== null && typeof rawBody === "object"
+          ? JSON.stringify(rawBody).slice(0, 500)
+          : String(rawBody).slice(0, 500);
+      return {
+        ok: false,
+        status: 502,
+        error: "Inference backend returned an invalid prediction payload",
+        details: snippet || undefined,
+      };
+    }
+
     return { ok: true, prediction };
   } catch (err) {
     return {
@@ -670,6 +726,23 @@ async function forwardToPythonBackend(
   }
 }
 
+function logApiRequestLifecycle(req: Request, res: Response, next: NextFunction): void {
+  if (!req.path.startsWith("/api")) {
+    next();
+    return;
+  }
+
+  const start = Date.now();
+  const pathLabel = req.originalUrl || req.url;
+  logger.logRequest(req.method, pathLabel);
+
+  res.on("finish", () => {
+    logger.logResponse(req.method, pathLabel, res.statusCode, Date.now() - start);
+  });
+
+  next();
+}
+
 export async function startServer(): Promise<Server> {
   const app = express();
 
@@ -677,6 +750,7 @@ export async function startServer(): Promise<Server> {
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
   app.use(applySecurityHeaders);
+  app.use(logApiRequestLifecycle);
 
   app.get("/api/healthz", (_req: Request, res: Response) => {
     res.json({

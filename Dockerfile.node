@@ -45,8 +45,8 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-# Install dumb-init for proper signal handling
-RUN apk add --no-cache dumb-init curl
+# dumb-init: signals; curl: healthcheck; ffmpeg: gateway best-effort WAV conversion (aligns with dev/prod parity)
+RUN apk add --no-cache dumb-init curl ffmpeg
 
 # Copy built server from builder
 COPY --from=builder /app/server/dist ./dist

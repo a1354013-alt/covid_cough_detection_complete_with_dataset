@@ -224,7 +224,6 @@ export default function Home() {
         }
       });
 
-      dispatch({ type: "ANALYZING_STARTED" });
       dispatch({ type: "ANALYSIS_SUCCEEDED", prediction: formatPrediction(result) });
     } catch (err) {
       if (err instanceof ApiRequestError && err.status === 503) {

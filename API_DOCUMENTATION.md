@@ -136,6 +136,7 @@ Error semantics:
 - `413`: payload too large
 - `429`: rate limit exceeded (`Retry-After` + rate-limit headers)
 - `500`: inference backend internal error
+- `502`: Python returned `200` but the prediction JSON failed gateway validation (malformed contract)
 - `503`: model service not ready/unavailable
 
 Rate-limit headers on `/api/predict` responses:

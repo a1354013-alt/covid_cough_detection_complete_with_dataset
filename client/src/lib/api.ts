@@ -22,6 +22,20 @@ export interface ApiError {
   details?: string;
 }
 
+/** Prefer gateway `error` (human summary); append `details` only in dev when distinct. */
+function gatewayErrorUserMessage(parsed: ApiError | null, fallback: string): string {
+  const err = parsed?.error?.trim();
+  const det = parsed?.details?.trim();
+  if (err) {
+    if (import.meta.env.DEV && det && det !== err) {
+      return `${err} — ${det}`;
+    }
+    return err;
+  }
+  if (det) return det;
+  return fallback;
+}
+
 export class ApiRequestError extends Error {
   status?: number;
 
@@ -108,10 +122,7 @@ class ApiClient {
 
         if (xhr.status === 400) {
           reject(
-            new ApiRequestError(
-              parsedError?.details || parsedError?.error || "Invalid audio request",
-              400
-            )
+            new ApiRequestError(gatewayErrorUserMessage(parsedError, "Invalid audio request"), 400)
           );
           return;
         }
@@ -119,9 +130,10 @@ class ApiClient {
         if (xhr.status === 413) {
           reject(
             new ApiRequestError(
-              parsedError?.details ||
-                parsedError?.error ||
-                "Audio file is too large. Maximum size is 10MB.",
+              gatewayErrorUserMessage(
+                parsedError,
+                "Audio file is too large. Maximum size is 10MB."
+              ),
               413
             )
           );
@@ -131,9 +143,10 @@ class ApiClient {
         if (xhr.status === 429) {
           reject(
             new ApiRequestError(
-              parsedError?.details ||
-                parsedError?.error ||
-                "Too many requests. Please wait before trying again.",
+              gatewayErrorUserMessage(
+                parsedError,
+                "Too many requests. Please wait before trying again."
+              ),
               429
             )
           );
@@ -143,10 +156,24 @@ class ApiClient {
         if (xhr.status === 503) {
           reject(
             new ApiRequestError(
-              parsedError?.details ||
-                parsedError?.error ||
-                "Model service is not ready. Please try again shortly.",
+              gatewayErrorUserMessage(
+                parsedError,
+                "Model service is not ready. Please try again shortly."
+              ),
               503
+            )
+          );
+          return;
+        }
+
+        if (xhr.status === 502) {
+          reject(
+            new ApiRequestError(
+              gatewayErrorUserMessage(
+                parsedError,
+                "Received an invalid response from the inference service."
+              ),
+              502
             )
           );
           return;
@@ -155,9 +182,10 @@ class ApiClient {
         if (xhr.status === 500) {
           reject(
             new ApiRequestError(
-              parsedError?.details ||
-                parsedError?.error ||
-                "Inference service encountered an internal error.",
+              gatewayErrorUserMessage(
+                parsedError,
+                "Inference service encountered an internal error."
+              ),
               500
             )
           );
@@ -166,9 +194,10 @@ class ApiClient {
 
         reject(
           new ApiRequestError(
-            parsedError?.details ||
-              parsedError?.error ||
-              `Server error: ${xhr.status} ${xhr.statusText}`,
+            gatewayErrorUserMessage(
+              parsedError,
+              `Server error: ${xhr.status} ${xhr.statusText}`
+            ),
             xhr.status
           )
         );

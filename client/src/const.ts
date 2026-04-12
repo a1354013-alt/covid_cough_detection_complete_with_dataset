@@ -1,3 +1,6 @@
+/** Synced via root `pnpm run sync:version` (same source as `server/src/config/version.ts`). */
+export { API_VERSION, APP_VERSION } from "@shared/version";
+
 export const APP_NAME = "COVID-19 Cough Signal Analysis";
 export const APP_SUBTITLE = "AI-powered cough risk signal analysis";
 

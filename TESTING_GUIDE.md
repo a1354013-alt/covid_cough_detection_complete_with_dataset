@@ -62,6 +62,7 @@ python -m compileall src
 - `/predict` success + validation error envelope behavior
 - strict startup fail-fast for missing/invalid model path
 - model version metadata extraction fallback behavior
+- `SimpleConvNet` + standard mel feature map shape smoke (`test_model_mel_shape_contract.py`)
 - audio processor edge cases:
   - invalid bytes
   - silence-only

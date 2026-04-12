@@ -11,8 +11,8 @@
     },
     "outDir": "./dist",
     "skipLibCheck": true,
-    "rootDir": "./src"
+    "rootDir": ".."
   },
-  "include": ["src", "vite-env.d.ts"],
+  "include": ["src", "vite-env.d.ts", "../shared/version.ts"],
   "exclude": ["node_modules", "dist", "build"]
 }

@@ -4,12 +4,14 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
+import { API_VERSION } from "./config/version.js";
+
 const gatewayPort = 3110;
 const fakePythonPort = 3810;
 const gatewayBaseUrl = `http://127.0.0.1:${gatewayPort}`;
 const rateLimitMaxRequests = 5;
 
-type PredictMode = "ok" | "400" | "413" | "503" | "500";
+type PredictMode = "ok" | "400" | "413" | "503" | "500" | "bad_shape_200";
 type VersionMode = "ok" | "status_503" | "disconnect";
 
 let gatewayServer: Server;
@@ -123,7 +125,7 @@ before(async () => {
       }
 
       sendJson(res, 200, {
-        api_version: "1.0.13",
+        api_version: API_VERSION,
         model_version: "trained-1.0",
         model_ready: true,
         device: "cpu",
@@ -163,6 +165,13 @@ before(async () => {
           sendJson(res, 500, {
             error: "Inference crash",
             details: "RuntimeError: out of memory",
+          });
+          return;
+        case "bad_shape_200":
+          sendJson(res, 200, {
+            label: "invalid",
+            prob: "nan",
+            model_version: "x",
           });
           return;
       }
@@ -268,7 +277,7 @@ describe("node gateway critical paths", () => {
       python_backend: { model_ready?: boolean };
     };
 
-    assert.equal(body.api_version, "1.0.13");
+    assert.equal(body.api_version, API_VERSION);
     assert.equal(body.python_backend.model_ready, true);
   });
 
@@ -389,6 +398,16 @@ describe("node gateway critical paths", () => {
     assert.equal(response.status, 500);
     assert.equal(body.error, "Inference backend internal error");
     assert.ok((body.details || "").includes("RuntimeError"));
+  });
+
+  it("returns 502 when python returns 200 with invalid prediction shape", async () => {
+    predictMode = "bad_shape_200";
+    const response = await postAudio(createMinimalWavBuffer(), "ok.wav");
+    const body = (await response.json()) as { error: string };
+
+    assert.equal(response.status, 502);
+    assert.ok(body.error.toLowerCase().includes("invalid"));
+    predictMode = "ok";
   });
 
   it("returns 429 with retry and rate-limit headers when quota exceeded", async () => {

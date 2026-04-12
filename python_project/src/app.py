@@ -18,7 +18,7 @@ from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 import uvicorn
 
 from .audio_processor import AudioProcessor
@@ -36,6 +36,8 @@ model_inference: Optional[ModelInference] = None
 
 
 class PredictionResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     label: Literal["positive", "negative"]
     prob: float
     model_version: str
@@ -43,11 +45,15 @@ class PredictionResponse(BaseModel):
 
 
 class ErrorResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     error: str
     details: Optional[str] = None
 
 
 class HealthResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     status: str
     model_loaded: bool
     model_version: Optional[str] = None
@@ -57,6 +63,8 @@ class HealthResponse(BaseModel):
 
 
 class VersionResponse(BaseModel):
+    model_config = ConfigDict(protected_namespaces=())
+
     api_version: str
     model_version: Optional[str] = None
     model_ready: bool
