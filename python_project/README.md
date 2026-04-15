@@ -29,6 +29,12 @@ Preferred (single source of truth: `pyproject.toml`):
 pip install -e ".[dev]"
 ```
 
+## Requirements
+
+- Python 3.10+
+- PyTorch 2.0+
+- CUDA/CPU compatible
+
 ## Run
 
 ```bash

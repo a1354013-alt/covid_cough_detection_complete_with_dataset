@@ -14,11 +14,35 @@ export const AUDIO_CONFIG = {
   channels: 1,
 } as const;
 
+/**
+ * Audio MIME types supported by the backend.
+ * Frontend must validate MIME type against this list.
+ * Supports WAV (RIFF), MP3 (ID3/frame sync), OGG, WebM formats.
+ * Multiple MIME variations (e.g., audio/wav, audio/x-wav) map to same format.
+ */
+export const SUPPORTED_AUDIO_FORMATS = {
+  wav: ["audio/wav", "audio/x-wav", "audio/wave"],
+  mp3: ["audio/mpeg", "audio/mp3"],
+  ogg: ["audio/ogg"],
+  webm: ["audio/webm"],
+} as const;
+
+export const ALL_SUPPORTED_MIME_TYPES = Object.values(SUPPORTED_AUDIO_FORMATS).flat() as ReadonlyArray<string>;
+
+export const SUPPORTED_AUDIO_EXTENSIONS = ["wav", "mp3", "ogg", "webm"] as const;
+
+/**
+ * MIME type prefixes for backend validation.
+ * Used when actual MIME type is present.
+ */
 export const SUPPORTED_BACKEND_MIME_PREFIXES = [
   "audio/webm",
   "audio/ogg",
   "audio/mpeg",
+  "audio/mp3",
   "audio/wav",
+  "audio/x-wav",
+  "audio/wave",
 ] as const;
 
 export const PREFERRED_RECORDER_MIME_TYPES = [

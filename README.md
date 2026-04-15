@@ -29,8 +29,8 @@ patches/          Development-only assets (not shipped to production unless expl
 
 ## Prerequisites
 
-- Node.js 18+
-- Python 3.8+
+- Node.js 20+
+- Python 3.10+
 - `corepack` enabled
 - Root package manager is pinned to `pnpm@10.33.0`
 

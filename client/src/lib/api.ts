@@ -289,9 +289,19 @@ export function formatPrediction(response: ApiPredictionResponse): UIPredictionR
 export function getAudioFileName(mimeType: string): string {
   const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, -5);
 
-  if (mimeType.includes("audio/mpeg")) return `cough-${timestamp}.mp3`;
-  if (mimeType.includes("audio/wav")) return `cough-${timestamp}.wav`;
-  if (mimeType.includes("audio/ogg")) return `cough-${timestamp}.ogg`;
+  // Support various audio/mpeg variations
+  if (mimeType.includes("audio/mpeg") || mimeType.includes("audio/mp3")) {
+    return `cough-${timestamp}.mp3`;
+  }
+  // Support audio/wav, audio/x-wav, audio/wave
+  if (mimeType.includes("audio/wav") || mimeType.includes("audio/x-wav") || mimeType.includes("audio/wave")) {
+    return `cough-${timestamp}.wav`;
+  }
+  // Support audio/ogg
+  if (mimeType.includes("audio/ogg")) {
+    return `cough-${timestamp}.ogg`;
+  }
+  // Default to WebM
   return `cough-${timestamp}.webm`;
 }
 

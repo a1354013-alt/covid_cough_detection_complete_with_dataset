@@ -77,7 +77,7 @@ export default function Home() {
       clearRecordingBuffers();
       dispatch({
         type: "RECORDING_FAILED",
-        message: `Unsupported audio type: ${audioBlob.type || "unknown"}. Please upload WAV, MP3, OGG, or WebM.`,
+        message: `Unsupported audio type: ${audioBlob.type || "unknown"}. Supported formats: WAV, MP3, OGG, WebM.`,
       });
       return;
     }
@@ -520,8 +520,19 @@ export default function Home() {
                     </div>
                   </div>
 
-                  <div className="pt-2 text-xs text-gray-500">
-                    Analysis completed at {state.prediction.timestamp.toLocaleTimeString()}
+                  <div className="space-y-1 border-t border-gray-200 pt-3">
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>Model Version:</span>
+                      <span className="font-mono">{state.prediction.modelVersion}</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>Processing Time:</span>
+                      <span className="font-mono">{state.prediction.processingTimeMs.toFixed(1)}ms</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>Completed:</span>
+                      <span>{state.prediction.timestamp.toLocaleTimeString()}</span>
+                    </div>
                   </div>
                 </div>
               </div>
