@@ -11,13 +11,14 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements
-COPY requirements.txt .
+# Copy project metadata and the installable package (single source of truth: pyproject.toml)
+COPY pyproject.toml README.md ./
+COPY src/covid_cough_detection ./src/covid_cough_detection
 
-# Install Python dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies + package
+RUN pip install --no-cache-dir .
 
-# Copy application code
+# Copy remaining source tree (non-packaged modules/tests are excluded via .dockerignore)
 COPY src ./src
 
 # Create non-root user
@@ -34,4 +35,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/readyz || exit 1
 
 # Start application
-CMD ["python", "-m", "uvicorn", "src.app:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "-m", "uvicorn", "covid_cough_detection.app:app", "--host", "0.0.0.0", "--port", "8000"]

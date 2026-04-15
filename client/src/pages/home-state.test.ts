@@ -24,7 +24,7 @@ describe("home-flow reducer", () => {
       },
     });
     const notReady = homeFlowReducer(withRecording, {
-      type: "BACKEND_NOT_READY",
+      type: "BACKEND_DEGRADED",
       message: "Model warming up",
     });
 

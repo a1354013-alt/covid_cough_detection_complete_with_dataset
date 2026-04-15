@@ -1,7 +1,6 @@
 import asyncio
 import io
 import json
-from pathlib import Path
 import sys
 import types
 
@@ -23,8 +22,7 @@ if "librosa" not in sys.modules:
     fake_librosa.power_to_db = lambda spec, ref=None: spec
     sys.modules["librosa"] = fake_librosa
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from src import app as app_module
+from covid_cough_detection import app as app_module
 
 
 class ReadyModel:
@@ -48,7 +46,7 @@ class NotReadyModel:
             "is_ready": False,
             "model_version": None,
             "device": "cpu",
-            "error": "model unavailable",
+            "error": "model not loaded",
         }
 
 
@@ -85,7 +83,7 @@ def test_readyz_ready_contract(monkeypatch):
     assert result["model_version"] == "checkpoint-v2"
 
 
-def test_readyz_not_ready_contract(monkeypatch):
+def test_readyz_degraded_contract(monkeypatch):
     monkeypatch.setattr(app_module, "model_inference", NotReadyModel())
 
     result = asyncio.run(app_module.readyz())
@@ -93,8 +91,8 @@ def test_readyz_not_ready_contract(monkeypatch):
     assert result.status_code == 503
 
     payload = decode_json_response(result)
-    assert payload["status"] == "not_ready"
-    assert payload["error"] == "model unavailable"
+    assert payload["status"] == "degraded"
+    assert payload["error"] == "model not loaded"
     assert "detail" not in payload
 
 
@@ -165,3 +163,52 @@ def test_predict_rejects_empty_file_with_stable_error_shape(monkeypatch):
 
     assert response.status_code == 400
     assert payload["error"] == "Empty file"
+
+
+def test_predict_rejects_missing_filename(monkeypatch):
+    monkeypatch.setattr(app_module, "audio_processor", OkProcessor())
+    monkeypatch.setattr(app_module, "model_inference", ReadyModel())
+
+    upload = UploadFile(filename="", file=io.BytesIO(b"abc"))
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(app_module.predict(upload))
+
+    response = asyncio.run(app_module.http_exception_handler(make_request(), exc_info.value))
+    payload = decode_json_response(response)
+
+    assert response.status_code == 400
+    assert payload["error"] == "No filename provided"
+
+
+def test_predict_rejects_oversized_upload(monkeypatch):
+    monkeypatch.setattr(app_module, "audio_processor", OkProcessor())
+    monkeypatch.setattr(app_module, "model_inference", ReadyModel())
+
+    oversized = io.BytesIO(b"a" * (10 * 1024 * 1024 + 1))
+    upload = UploadFile(filename="big.wav", file=oversized)
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(app_module.predict(upload))
+
+    response = asyncio.run(app_module.http_exception_handler(make_request(), exc_info.value))
+    payload = decode_json_response(response)
+
+    assert response.status_code == 413
+    assert "File too large" in payload["error"]
+
+
+def test_predict_service_not_initialized_maps_to_stable_error_shape(monkeypatch):
+    monkeypatch.setattr(app_module, "audio_processor", None)
+    monkeypatch.setattr(app_module, "model_inference", None)
+
+    upload = UploadFile(filename="cough.wav", file=io.BytesIO(b"abc"))
+
+    with pytest.raises(HTTPException) as exc_info:
+        asyncio.run(app_module.predict(upload))
+
+    response = asyncio.run(app_module.http_exception_handler(make_request(), exc_info.value))
+    payload = decode_json_response(response)
+
+    assert response.status_code == 503
+    assert payload["error"] == "Service not initialized"

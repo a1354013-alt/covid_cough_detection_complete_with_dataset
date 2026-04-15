@@ -23,6 +23,8 @@ server/           Node.js API gateway
 python_project/   FastAPI inference backend
 scripts/          Version sync and consistency checks
 shared/           Generated shared version metadata
+dataset/          Sample audio dataset + dataset tooling (not shipped to production)
+patches/          Development-only assets (not shipped to production unless explicitly required)
 ```
 
 ## Prerequisites
@@ -45,7 +47,7 @@ corepack pnpm run sync:version
 This regenerates and synchronizes:
 - `shared/version.ts`
 - `server/src/config/version.ts`
-- `python_project/src/version.py`
+- `python_project/src/covid_cough_detection/version.py`
 - `client/package.json` / `server/package.json` version fields
 - `python_project/pyproject.toml` version field
 
@@ -65,8 +67,7 @@ If pnpm reports **ignored build scripts** (for example `esbuild`), allow them so
 
 ```bash
 cd python_project
-pip install -r requirements.txt
-pip install -r requirements-dev.txt
+pip install -e ".[dev]"
 cd ..
 ```
 
@@ -76,7 +77,7 @@ cd ..
 cd python_project
 set MODEL_PATH=./models/model.pt
 # macOS/Linux: export MODEL_PATH=./models/model.pt
-python -m uvicorn src.app:app --host 0.0.0.0 --port 8000 --reload
+python -m uvicorn covid_cough_detection.app:app --host 0.0.0.0 --port 8000 --reload
 cd ..
 ```
 

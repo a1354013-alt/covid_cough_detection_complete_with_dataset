@@ -23,12 +23,18 @@ pip install -r requirements.txt
 pip install -r requirements-dev.txt
 ```
 
+Preferred (single source of truth: `pyproject.toml`):
+
+```bash
+pip install -e ".[dev]"
+```
+
 ## Run
 
 ```bash
 set MODEL_PATH=./models/model.pt
 # macOS/Linux: export MODEL_PATH=./models/model.pt
-python -m uvicorn src.app:app --host 0.0.0.0 --port 8000 --reload
+python -m uvicorn covid_cough_detection.app:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 ## Endpoints
@@ -76,7 +82,7 @@ Error response contract:
 
 ```bash
 python -m pytest tests -q
-python -m compileall src
+python -m compileall src/covid_cough_detection
 ```
 
 This backend is for research/demo risk signaling and is **not** a medical diagnosis service.

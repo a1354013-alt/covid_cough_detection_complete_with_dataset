@@ -1,0 +1,50 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: pnpm
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install JS deps
+        run: corepack pnpm install --frozen-lockfile
+
+      - name: JS quality gates
+        run: |
+          corepack pnpm check
+          corepack pnpm lint
+          corepack pnpm build
+          corepack pnpm test
+          corepack pnpm check:version
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e "./python_project[dev]"
+
+      - name: Python quality gates
+        run: |
+          python -m pytest python_project/tests -q
+          python -m compileall python_project/src/covid_cough_detection
+

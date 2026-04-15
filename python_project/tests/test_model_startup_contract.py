@@ -1,10 +1,6 @@
-from pathlib import Path
-import sys
-
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from src.model_inference import DEFAULT_MODEL_VERSION, ModelInference  # noqa: E402
+from covid_cough_detection.model_inference import DEFAULT_MODEL_VERSION, ModelInference  # noqa: E402
 
 
 def test_model_inference_requires_model_path():

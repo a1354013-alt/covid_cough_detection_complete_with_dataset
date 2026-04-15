@@ -13,6 +13,10 @@ import os from "node:os";
 import path from "node:path";
 import { spawn } from "node:child_process";
 
+function getFfmpegCommand(): string {
+  return process.env.FFMPEG_PATH || "ffmpeg";
+}
+
 function runProcess(command: string, args: string[]): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
@@ -56,7 +60,7 @@ export function needsConversion(mimeType: string): boolean {
 
 async function isFfmpegAvailable(): Promise<boolean> {
   try {
-    await runProcess("ffmpeg", ["-version"]);
+    await runProcess(getFfmpegCommand(), ["-version"]);
     return true;
   } catch {
     return false;
@@ -81,7 +85,7 @@ export async function convertToWav(buffer: Buffer, sourceMimeType: string): Prom
   try {
     await fs.writeFile(inputPath, buffer);
 
-    await runProcess("ffmpeg", [
+    await runProcess(getFfmpegCommand(), [
       "-hide_banner",
       "-loglevel",
       "error",

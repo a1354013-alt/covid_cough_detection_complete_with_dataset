@@ -20,6 +20,7 @@ let predictMode: PredictMode = "ok";
 let versionMode: VersionMode = "ok";
 let readyzStatus = 200;
 let ipCounter = 10;
+let lastPredictRequestBody = "";
 
 const fallbackDir = path.join(process.cwd(), "src", "public");
 const fallbackIndexPath = path.join(fallbackDir, "index.html");
@@ -49,9 +50,14 @@ function createMp3MagicBuffer(): Buffer {
   return Buffer.from([0x49, 0x44, 0x33, 0x03, 0x00, 0x00]);
 }
 
-async function postAudio(buffer: Buffer, filename: string, ip = nextIp()): Promise<Response> {
+async function postAudio(
+  buffer: Buffer,
+  filename: string,
+  mimeType = "audio/wav",
+  ip = nextIp()
+): Promise<Response> {
   const form = new FormData();
-  form.append("audio", new Blob([buffer], { type: "audio/wav" }), filename);
+  form.append("audio", new Blob([buffer], { type: mimeType }), filename);
 
   return fetch(`${gatewayBaseUrl}/api/predict`, {
     method: "POST",
@@ -103,7 +109,7 @@ before(async () => {
       }
 
       sendJson(res, readyzStatus, {
-        status: "not_ready",
+        status: "degraded",
         model_loaded: false,
         model_version: null,
         device: "cpu",
@@ -115,7 +121,7 @@ before(async () => {
 
     if (req.method === "GET" && req.url === "/version") {
       if (versionMode === "status_503") {
-        sendJson(res, 503, { error: "backend unavailable" });
+        sendJson(res, 503, { error: "backend degraded" });
         return;
       }
 
@@ -135,46 +141,55 @@ before(async () => {
     }
 
     if (req.method === "POST" && req.url === "/predict") {
-      switch (predictMode) {
-        case "ok":
-          sendJson(res, 200, {
-            label: "negative",
-            prob: 0.92,
-            model_version: "trained-1.0",
-            processing_time_ms: 25.2,
-          });
-          return;
-        case "400":
-          sendJson(res, 400, {
-            error: "Invalid audio payload",
-            details: "Audio decoding failed",
-          });
-          return;
-        case "413":
-          sendJson(res, 413, {
-            error: "File too large (max 10MB)",
-          });
-          return;
-        case "503":
-          sendJson(res, 503, {
-            error: "Model not ready",
-            details: "Model still loading",
-          });
-          return;
-        case "500":
-          sendJson(res, 500, {
-            error: "Inference crash",
-            details: "RuntimeError: out of memory",
-          });
-          return;
-        case "bad_shape_200":
-          sendJson(res, 200, {
-            label: "invalid",
-            prob: "nan",
-            model_version: "x",
-          });
-          return;
-      }
+      const chunks: Buffer[] = [];
+      req.on("data", (chunk: Buffer) => {
+        chunks.push(chunk);
+      });
+      req.on("end", () => {
+        lastPredictRequestBody = Buffer.concat(chunks).toString("utf8");
+
+        switch (predictMode) {
+          case "ok":
+            sendJson(res, 200, {
+              label: "negative",
+              prob: 0.92,
+              model_version: "trained-1.0",
+              processing_time_ms: 25.2,
+            });
+            return;
+          case "400":
+            sendJson(res, 400, {
+              error: "Invalid audio payload",
+              details: "Audio decoding failed",
+            });
+            return;
+          case "413":
+            sendJson(res, 413, {
+              error: "File too large (max 10MB)",
+            });
+            return;
+          case "503":
+            sendJson(res, 503, {
+              error: "Model not ready",
+              details: "Model still loading",
+            });
+            return;
+          case "500":
+            sendJson(res, 500, {
+              error: "Inference crash",
+              details: "RuntimeError: out of memory",
+            });
+            return;
+          case "bad_shape_200":
+            sendJson(res, 200, {
+              label: "invalid",
+              prob: "nan",
+              model_version: "x",
+            });
+            return;
+        }
+      });
+      return;
     }
 
     sendJson(res, 404, { error: "not found" });
@@ -237,19 +252,20 @@ describe("node gateway critical paths", () => {
   it("GET /api/health mirrors readiness when model is ready", async () => {
     readyzStatus = 200;
     const response = await fetch(`${gatewayBaseUrl}/api/health`);
-    const body = (await response.json()) as { status: string; model_loaded: boolean };
+    const body = (await response.json()) as { status: string; python_backend: { model_loaded: boolean } };
     assert.equal(response.status, 200);
     assert.equal(body.status, "ready");
-    assert.equal(body.model_loaded, true);
+    assert.equal(body.python_backend.model_loaded, true);
   });
 
-  it("GET /api/readyz mirrors python not-ready status", async () => {
+  it("GET /api/readyz mirrors python degraded status", async () => {
     readyzStatus = 503;
     const response = await fetch(`${gatewayBaseUrl}/api/readyz`);
-    const body = (await response.json()) as { status: string; reason: string };
+    const body = (await response.json()) as { status: string; python_backend: { error: string; status: string } };
     assert.equal(response.status, 503);
-    assert.equal(body.status, "not_ready");
-    assert.ok(body.reason.includes("model warming up"));
+    assert.equal(body.status, "degraded");
+    assert.equal(body.python_backend.status, "degraded");
+    assert.ok(body.python_backend.error.includes("model warming up"));
     readyzStatus = 200;
   });
 
@@ -281,7 +297,7 @@ describe("node gateway critical paths", () => {
     assert.equal(body.python_backend.model_ready, true);
   });
 
-  it("GET /api/version degrades gracefully when python is unreachable", async () => {
+  it("GET /api/version degrades gracefully when python connection fails", async () => {
     versionMode = "disconnect";
     const response = await fetch(`${gatewayBaseUrl}/api/version`);
     assert.equal(response.status, 200);
@@ -290,7 +306,7 @@ describe("node gateway critical paths", () => {
       python_backend: { status: string; error: string };
     };
 
-    assert.equal(body.python_backend.status, "unreachable");
+    assert.equal(body.python_backend.status, "degraded");
     assert.ok(body.python_backend.error.length > 0);
     versionMode = "ok";
   });
@@ -309,6 +325,20 @@ describe("node gateway critical paths", () => {
     assert.equal(body.label, "negative");
     assert.equal(body.model_version, "trained-1.0");
     assert.equal(typeof body.prob, "number");
+  });
+
+  it("falls back to forwarding original mime when ffmpeg is missing", async () => {
+    process.env.FFMPEG_PATH = "definitely-not-ffmpeg";
+
+    const response = await postAudio(createMp3MagicBuffer(), "ok.mp3", "audio/mpeg");
+    assert.equal(response.status, 200);
+
+    assert.ok(
+      lastPredictRequestBody.includes("Content-Type: audio/mpeg"),
+      "Gateway should forward original payload when conversion is unavailable"
+    );
+
+    delete process.env.FFMPEG_PATH;
   });
 
   it("POST /api/predict rejects non-multipart payload", async () => {

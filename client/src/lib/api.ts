@@ -54,13 +54,16 @@ export interface HealthzResponse {
 }
 
 export interface ReadinessResponse {
-  status: "ready" | "not_ready";
+  status: "ready" | "degraded";
   timestamp: string;
-  python_backend: "ok" | "started" | "unreachable";
-  model_loaded?: boolean;
-  reason?: string;
-  model_version?: string;
-  device?: string;
+  api_version: string;
+  python_backend: {
+    status: "ready" | "degraded";
+    model_loaded: boolean;
+    error?: string;
+    model_version?: string;
+    device?: string;
+  };
 }
 
 export interface VersionResponse {
@@ -233,24 +236,27 @@ class ApiClient {
       signal: AbortSignal.timeout(5000),
     });
 
-    if (response.status === 503) {
-      let reason: string | undefined;
-      try {
-        const body = (await response.json()) as Record<string, unknown>;
-        if (typeof body.reason === "string" && body.reason.length > 0) {
-          reason = body.reason;
-        }
-      } catch {
-        // If response body is not JSON, fall back to a generic message.
-      }
-      throw new Error(reason ? `Service not ready: ${reason}` : "Service not ready: Model unavailable");
+    let parsed: ReadinessResponse | null = null;
+    try {
+      parsed = (await response.json()) as ReadinessResponse;
+    } catch {
+      parsed = null;
+    }
+
+    // /api/readyz uses 503 + a structured degraded payload (not the error envelope).
+    if (response.status === 503 && parsed) {
+      return parsed;
     }
 
     if (!response.ok) {
       throw new ApiRequestError(`Readiness check failed: ${response.statusText}`, response.status);
     }
 
-    return (await response.json()) as ReadinessResponse;
+    if (!parsed) {
+      throw new ApiRequestError("Readiness check returned invalid JSON", 502);
+    }
+
+    return parsed;
   }
 
   async getVersion(): Promise<VersionResponse> {

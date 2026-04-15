@@ -25,6 +25,7 @@ RUN corepack pnpm install --frozen-lockfile
 # Copy source code
 COPY client ./client
 COPY server ./server
+COPY shared ./shared
 
 # Build client
 RUN corepack pnpm --filter ./client run build

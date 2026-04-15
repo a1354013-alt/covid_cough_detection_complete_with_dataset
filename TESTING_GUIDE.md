@@ -25,10 +25,9 @@ Coverage:
 
 ```bash
 cd python_project
-pip install -r requirements.txt
-pip install -r requirements-dev.txt
+pip install -e ".[dev]"
 python -m pytest tests -q
-python -m compileall src
+python -m compileall src/covid_cough_detection
 ```
 
 ## 3. Current Test Scope
@@ -36,7 +35,7 @@ python -m compileall src
 ### Node (`server/src/index.test.ts`)
 - `GET /api/healthz` contract and security headers
 - `GET /api/health` and `GET /api/readyz` readiness semantics
-- `GET /api/version` success and Python-unreachable degradation
+- `GET /api/version` success and Python-connection-failure degradation
 - `OPTIONS /api/predict` CORS preflight handling
 - `POST /api/predict` success path
 - `POST /api/predict` rejection paths:
@@ -82,11 +81,11 @@ curl -X POST http://localhost:3000/api/predict -F "audio=@./sample.wav"
 
 ## 5. CI Minimum Recommendation
 
-Fail pipeline on non-zero exit from:
+This repo ships a GitHub Actions workflow at `.github/workflows/ci.yml` that fails on non-zero exit from:
 1. `corepack pnpm check`
 2. `corepack pnpm lint`
 3. `corepack pnpm build`
 4. `corepack pnpm test`
 5. `corepack pnpm check:version`
 6. `python -m pytest python_project/tests -q`
-7. `python -m compileall python_project/src`
+7. `python -m compileall python_project/src/covid_cough_detection`

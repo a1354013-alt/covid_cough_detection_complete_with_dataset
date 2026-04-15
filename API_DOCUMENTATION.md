@@ -48,22 +48,28 @@ Ready (`200`):
 {
   "status": "ready",
   "timestamp": "2026-04-10T00:00:00.000Z",
-  "python_backend": "ok",
-  "model_loaded": true,
-  "model_version": "checkpoint-2026.04",
-  "device": "cpu"
+  "api_version": "1.0.13",
+  "python_backend": {
+    "status": "ready",
+    "model_loaded": true,
+    "model_version": "checkpoint-2026.04",
+    "device": "cpu"
+  }
 }
 ```
 
-Not ready (`503`):
+Degraded (`503`):
 
 ```json
 {
-  "status": "not_ready",
+  "status": "degraded",
   "timestamp": "2026-04-10T00:00:00.000Z",
-  "python_backend": "started",
-  "model_loaded": false,
-  "reason": "model unavailable"
+  "api_version": "1.0.13",
+  "python_backend": {
+    "status": "degraded",
+    "model_loaded": false,
+    "error": "model not loaded"
+  }
 }
 ```
 
@@ -71,7 +77,7 @@ Not ready (`503`):
 Backward-compatible readiness mirror of `/api/readyz`.
 
 ### 3.4 `GET /api/version`
-Version metadata with graceful degradation when Python backend is unavailable.
+Version metadata with graceful degradation when Python backend is degraded.
 
 Success (`200`) example:
 
@@ -90,14 +96,14 @@ Success (`200`) example:
 }
 ```
 
-Degraded (`200`) example when Python is unreachable:
+Degraded (`200`) example when Python connection fails:
 
 ```json
 {
   "api_version": "1.0.13",
   "node_version": "v22.14.0",
   "python_backend": {
-    "status": "unreachable",
+    "status": "degraded",
     "error": "fetch failed"
   },
   "timestamp": "2026-04-10T00:00:00.000Z"
@@ -137,7 +143,7 @@ Error semantics:
 - `429`: rate limit exceeded (`Retry-After` + rate-limit headers)
 - `500`: inference backend internal error
 - `502`: Python returned `200` but the prediction JSON failed gateway validation (malformed contract)
-- `503`: model service not ready/unavailable
+- `503`: model service is degraded (for example model not loaded yet)
 
 Rate-limit headers on `/api/predict` responses:
 - `RateLimit-Limit`

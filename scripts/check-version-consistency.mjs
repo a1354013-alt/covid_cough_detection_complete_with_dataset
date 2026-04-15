@@ -1,7 +1,17 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const root = process.cwd();
+function parseRootArg(argv) {
+  const idx = argv.indexOf("--root");
+  if (idx === -1) return null;
+  const value = argv[idx + 1];
+  if (!value) {
+    throw new Error("--root requires a path value");
+  }
+  return value;
+}
+
+const root = parseRootArg(process.argv) ?? process.cwd();
 
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
@@ -25,7 +35,9 @@ const pyprojectVersion = pyprojectVersionMatch?.[2];
 
 const sharedContent = readText(path.join(root, "shared", "version.ts"));
 const serverContent = readText(path.join(root, "server", "src", "config", "version.ts"));
-const pythonContent = readText(path.join(root, "python_project", "src", "version.py"));
+const pythonContent = readText(
+  path.join(root, "python_project", "src", "covid_cough_detection", "version.py")
+);
 
 const generatedMarker = "AUTO-GENERATED FILE.";
 const checks = {
@@ -59,7 +71,7 @@ if (!serverContent.includes(generatedMarker)) {
 
 if (!pythonContent.includes(generatedMarker)) {
   console.error(
-    "python_project/src/version.py is missing generated marker. Run: corepack pnpm run sync:version"
+    "python_project/src/covid_cough_detection/version.py is missing generated marker. Run: corepack pnpm run sync:version"
   );
   process.exit(1);
 }

@@ -22,6 +22,10 @@ Provide your own `python_project/models/model.pt`.
 
 ## 3. Required Environment Variables
 
+Reference templates:
+- Node gateway: `.env.example`
+- Python backend: `python_project/.env.example`
+
 ### Node
 - `PORT` (default `3000`)
 - `PYTHON_API_URL` (default `http://localhost:8000`)
@@ -30,6 +34,7 @@ Provide your own `python_project/models/model.pt`.
 - `RATE_LIMIT_MAX_REQUESTS` (default `30`)
 - `TRUST_PROXY` (default `1` in production)
 - `CSP_CONNECT_SRC_EXTRA` (optional)
+- `FFMPEG_PATH` (optional, default `ffmpeg`)
 
 ### Python
 - `MODEL_PATH` (**required**)
@@ -114,6 +119,6 @@ For readiness-gated deployments, `/api/readyz` must be `200` before exposing tra
 4. `corepack pnpm test`
 5. `corepack pnpm check:version`
 6. `python -m pytest python_project/tests -q`
-7. `python -m compileall python_project/src`
+7. `python -m compileall python_project/src/covid_cough_detection`
 8. Confirm model artifact availability in deployment environment
 9. Confirm `/api/readyz` and `/api/predict` behavior in target runtime

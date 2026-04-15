@@ -1,0 +1,29 @@
+# Bytecode / venv / caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.venv/
+venv/
+env/
+
+# Local models and datasets (mounted at runtime, not baked into image)
+models/
+data/
+
+# Tests and research code are not part of the runtime image
+tests/
+src/experimental/
+experimental/
+
+# Editor / OS
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+

@@ -4,7 +4,18 @@ import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const root = path.resolve(__dirname, "..");
+
+function parseRootArg(argv) {
+  const idx = argv.indexOf("--root");
+  if (idx === -1) return null;
+  const value = argv[idx + 1];
+  if (!value) {
+    throw new Error("--root requires a path value");
+  }
+  return value;
+}
+
+const root = path.resolve(parseRootArg(process.argv) ?? path.resolve(__dirname, ".."));
 const checkOnly = process.argv.includes("--check") || process.argv.includes("--verify");
 
 const packageJsonPath = path.join(root, "package.json");
@@ -39,8 +50,8 @@ const targets = [
     expected: serverVersionContent,
   },
   {
-    label: "python_project/src/version.py",
-    filepath: path.join(root, "python_project", "src", "version.py"),
+    label: "python_project/src/covid_cough_detection/version.py",
+    filepath: path.join(root, "python_project", "src", "covid_cough_detection", "version.py"),
     expected: pythonVersionContent,
   },
 ];
@@ -104,6 +115,7 @@ for (const target of targets) {
     continue;
   }
 
+  await fs.mkdir(path.dirname(target.filepath), { recursive: true });
   await fs.writeFile(target.filepath, target.expected, "utf8");
   console.log(`Updated ${target.label}`);
 }

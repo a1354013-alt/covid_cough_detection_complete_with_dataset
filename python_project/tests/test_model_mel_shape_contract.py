@@ -1,13 +1,11 @@
 """Contract smoke: SimpleConvNet forward with standard mel feature map shape."""
 
-from pathlib import Path
 import sys
 
 import numpy as np
 import torch
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from src.model_inference import ModelInference, SimpleConvNet  # noqa: E402
+from covid_cough_detection.model_inference import ModelInference, SimpleConvNet  # noqa: E402
 
 
 def test_predict_accepts_standard_mel_feature_shape(tmp_path):

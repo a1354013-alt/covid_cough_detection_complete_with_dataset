@@ -23,6 +23,11 @@ build/
 .nuxt/
 .vite/
 
+# Samples / research artifacts (not shipped in production images)
+dataset/
+patches/
+python_project/src/experimental/
+
 # Environment files
 .env
 .env.local

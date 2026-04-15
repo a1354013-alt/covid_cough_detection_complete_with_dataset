@@ -1,6 +1,6 @@
 import type { UIPredictionResult } from "@/lib/api";
 
-export type BackendStatus = "checking" | "ready" | "not_ready" | "unreachable";
+export type BackendStatus = "checking" | "ready" | "degraded";
 export type FlowPhase =
   | "idle"
   | "recording"
@@ -40,8 +40,7 @@ export interface SignalPresentation {
 export type HomeFlowAction =
   | { type: "BACKEND_CHECKING"; message: string }
   | { type: "BACKEND_READY"; message: string }
-  | { type: "BACKEND_NOT_READY"; message: string }
-  | { type: "BACKEND_UNREACHABLE"; message: string }
+  | { type: "BACKEND_DEGRADED"; message: string }
   | { type: "RESET_FLOW" }
   | { type: "RECORDING_STARTED" }
   | { type: "RECORDING_TICK"; seconds: number }
@@ -90,10 +89,8 @@ export function homeFlowReducer(state: HomeFlowState, action: HomeFlowAction): H
       return applyBackendState(state, "checking", action.message);
     case "BACKEND_READY":
       return applyBackendState(state, "ready", action.message);
-    case "BACKEND_NOT_READY":
-      return applyBackendState(state, "not_ready", action.message);
-    case "BACKEND_UNREACHABLE":
-      return applyBackendState(state, "unreachable", action.message);
+    case "BACKEND_DEGRADED":
+      return applyBackendState(state, "degraded", action.message);
 
     case "RESET_FLOW":
       return {

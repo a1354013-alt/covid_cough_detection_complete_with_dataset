@@ -26,6 +26,7 @@ import {
   Square,
   Upload,
 } from "lucide-react";
+import type { ChangeEvent } from "react";
 import { useEffect, useReducer, useRef } from "react";
 
 export default function Home() {
@@ -36,6 +37,7 @@ export default function Home() {
   const timerIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordingTimeRef = useRef(0);
   const recordedMimeTypeRef = useRef<string>("audio/webm");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const stopTimer = () => {
     if (timerIntervalRef.current) {
@@ -47,6 +49,63 @@ export default function Home() {
   const clearRecordingBuffers = () => {
     recordingTimeRef.current = 0;
     audioChunksRef.current = [];
+  };
+
+  const captureAudioBlob = (audioBlob: Blob, durationSeconds: number, timestamp = new Date()) => {
+    if (audioBlob.size > AUDIO_CONFIG.maxFileSizeBytes) {
+      clearRecordingBuffers();
+      dispatch({
+        type: "RECORDING_FAILED",
+        message: `Audio too large (${(audioBlob.size / 1024 / 1024).toFixed(1)}MB). Maximum is 10MB.`,
+      });
+      return;
+    }
+
+    if (durationSeconds > 0 && durationSeconds < AUDIO_CONFIG.minRecordingTimeSeconds) {
+      clearRecordingBuffers();
+      dispatch({
+        type: "RECORDING_FAILED",
+        message: `Audio too short (${durationSeconds}s). Minimum is ${AUDIO_CONFIG.minRecordingTimeSeconds}s.`,
+      });
+      return;
+    }
+
+    const supported = SUPPORTED_BACKEND_MIME_PREFIXES.some((prefix) =>
+      audioBlob.type.startsWith(prefix)
+    );
+    if (!supported) {
+      clearRecordingBuffers();
+      dispatch({
+        type: "RECORDING_FAILED",
+        message: `Unsupported audio type: ${audioBlob.type || "unknown"}. Please upload WAV, MP3, OGG, or WebM.`,
+      });
+      return;
+    }
+
+    const recordingData: RecordingData = {
+      blob: audioBlob,
+      duration: durationSeconds,
+      timestamp,
+    };
+
+    dispatch({ type: "RECORDING_CAPTURED", data: recordingData });
+  };
+
+  const getAudioDurationSeconds = async (file: File): Promise<number> => {
+    try {
+      const url = URL.createObjectURL(file);
+      const audio = new Audio();
+      const duration = await new Promise<number>((resolve, reject) => {
+        audio.preload = "metadata";
+        audio.onloadedmetadata = () => resolve(Number.isFinite(audio.duration) ? audio.duration : 0);
+        audio.onerror = () => reject(new Error("Failed to read audio metadata"));
+        audio.src = url;
+      });
+      URL.revokeObjectURL(url);
+      return Math.max(0, Math.round(duration));
+    } catch {
+      return 0;
+    }
   };
 
   useEffect(() => {
@@ -66,20 +125,22 @@ export default function Home() {
     try {
       const readiness = await apiClient.getReadiness();
       if (readiness.status === "ready") {
-        dispatch({ type: "BACKEND_READY", message: "Backend is ready." });
+        const model = readiness.python_backend.model_version;
+        const device = readiness.python_backend.device;
+        const suffix = model ? ` (model: ${model}${device ? `, device: ${device}` : ""})` : "";
+        dispatch({ type: "BACKEND_READY", message: `Backend is ready.${suffix}` });
       } else {
+        const model = readiness.python_backend.model_version;
+        const device = readiness.python_backend.device;
+        const suffix = model ? ` (model: ${model}${device ? `, device: ${device}` : ""})` : "";
         dispatch({
-          type: "BACKEND_NOT_READY",
-          message: readiness.reason || "Model is not ready.",
+          type: "BACKEND_DEGRADED",
+          message: `${readiness.python_backend.error || "Backend is degraded."}${suffix}`,
         });
       }
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Backend is unreachable.";
-      if (message.toLowerCase().includes("not ready")) {
-        dispatch({ type: "BACKEND_NOT_READY", message });
-      } else {
-        dispatch({ type: "BACKEND_UNREACHABLE", message });
-      }
+      const message = err instanceof Error ? err.message : "Backend connection failed.";
+      dispatch({ type: "BACKEND_DEGRADED", message });
     }
   };
 
@@ -91,6 +152,23 @@ export default function Home() {
 
   const startRecording = async () => {
     try {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        dispatch({
+          type: "RECORDING_FAILED",
+          message:
+            "Microphone recording is not supported in this browser. Please upload an audio file instead.",
+        });
+        return;
+      }
+
+      if (typeof MediaRecorder === "undefined") {
+        dispatch({
+          type: "RECORDING_FAILED",
+          message: "MediaRecorder is not available in this browser. Please upload an audio file instead.",
+        });
+        return;
+      }
+
       stopTimer();
       clearRecordingBuffers();
       dispatch({ type: "RECORDING_STARTED" });
@@ -133,44 +211,7 @@ export default function Home() {
         const actualMimeType = mediaRecorder.mimeType || recordedMimeTypeRef.current || "audio/webm";
         const audioBlob = new Blob(audioChunksRef.current, { type: actualMimeType });
         const finalDuration = recordingTimeRef.current;
-
-        if (audioBlob.size > AUDIO_CONFIG.maxFileSizeBytes) {
-          clearRecordingBuffers();
-          dispatch({
-            type: "RECORDING_FAILED",
-            message: `Recording too large (${(audioBlob.size / 1024 / 1024).toFixed(1)}MB). Maximum is 10MB.`,
-          });
-          return;
-        }
-
-        if (finalDuration < AUDIO_CONFIG.minRecordingTimeSeconds) {
-          clearRecordingBuffers();
-          dispatch({
-            type: "RECORDING_FAILED",
-            message: `Recording too short (${finalDuration}s). Minimum is ${AUDIO_CONFIG.minRecordingTimeSeconds}s.`,
-          });
-          return;
-        }
-
-        const supported = SUPPORTED_BACKEND_MIME_PREFIXES.some((prefix) =>
-          actualMimeType.startsWith(prefix)
-        );
-        if (!supported) {
-          clearRecordingBuffers();
-          dispatch({
-            type: "RECORDING_FAILED",
-            message: `Unsupported audio format: ${actualMimeType}. Please try again.`,
-          });
-          return;
-        }
-
-        const recordingData: RecordingData = {
-          blob: audioBlob,
-          duration: finalDuration,
-          timestamp: new Date(),
-        };
-
-        dispatch({ type: "RECORDING_CAPTURED", data: recordingData });
+        captureAudioBlob(audioBlob, finalDuration, new Date());
       };
 
       mediaRecorderRef.current = mediaRecorder;
@@ -187,6 +228,24 @@ export default function Home() {
     } catch (err) {
       stopTimer();
       clearRecordingBuffers();
+
+      const errorName = err instanceof Error ? err.name : "";
+      if (errorName === "NotAllowedError" || errorName === "SecurityError") {
+        dispatch({
+          type: "RECORDING_FAILED",
+          message: "Microphone permission was denied. You can upload an audio file instead.",
+        });
+        return;
+      }
+
+      if (errorName === "NotFoundError") {
+        dispatch({
+          type: "RECORDING_FAILED",
+          message: "No microphone device was found. You can upload an audio file instead.",
+        });
+        return;
+      }
+
       dispatch({
         type: "RECORDING_FAILED",
         message: err instanceof Error ? err.message : "Failed to start recording",
@@ -198,6 +257,22 @@ export default function Home() {
     if (mediaRecorderRef.current?.state === "recording") {
       mediaRecorderRef.current.stop();
     }
+  };
+
+  const openFilePicker = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelected = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    stopTimer();
+    clearRecordingBuffers();
+
+    const durationSeconds = await getAudioDurationSeconds(file);
+    captureAudioBlob(file, durationSeconds, new Date());
   };
 
   const uploadRecording = async () => {
@@ -227,7 +302,7 @@ export default function Home() {
       dispatch({ type: "ANALYSIS_SUCCEEDED", prediction: formatPrediction(result) });
     } catch (err) {
       if (err instanceof ApiRequestError && err.status === 503) {
-        dispatch({ type: "BACKEND_NOT_READY", message: err.message });
+        dispatch({ type: "BACKEND_DEGRADED", message: err.message });
       }
 
       dispatch({
@@ -253,9 +328,7 @@ export default function Home() {
           <p className="text-gray-600">{APP_SUBTITLE}</p>
         </div>
 
-        {(state.backend.status === "not_ready" ||
-          state.backend.status === "unreachable" ||
-          state.backend.status === "checking") && (
+        {(state.backend.status === "degraded" || state.backend.status === "checking") && (
           <Alert className="mb-4 border-amber-200 bg-amber-50">
             <ServerCrash className="h-4 w-4 text-amber-700" />
             <AlertDescription className="text-amber-900">
@@ -268,6 +341,24 @@ export default function Home() {
                 }}
               >
                 Retry
+              </button>
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {state.backend.status === "ready" && (
+          <Alert className="mb-4 border-emerald-200 bg-emerald-50">
+            <CheckCircle2 className="h-4 w-4 text-emerald-700" />
+            <AlertDescription className="text-emerald-900">
+              {state.backend.message}
+              <button
+                className="ml-2 underline"
+                type="button"
+                onClick={() => {
+                  void refreshBackendReadiness();
+                }}
+              >
+                Refresh
               </button>
             </AlertDescription>
           </Alert>
@@ -296,14 +387,33 @@ export default function Home() {
 
               <div className="flex justify-center gap-4">
                 {!recording && !hasRecording && (
-                  <button
-                    onClick={startRecording}
-                    disabled={busy}
-                    className="flex items-center gap-2 rounded-lg bg-blue-600 px-6 py-3 text-white transition hover:bg-blue-700 disabled:bg-gray-400"
-                  >
-                    <Mic className="h-5 w-5" />
-                    Start Recording
-                  </button>
+                  <>
+                    <button
+                      onClick={startRecording}
+                      disabled={busy}
+                      className="flex items-center gap-2 rounded-lg bg-blue-600 px-6 py-3 text-white transition hover:bg-blue-700 disabled:bg-gray-400"
+                    >
+                      <Mic className="h-5 w-5" />
+                      Start Recording
+                    </button>
+
+                    <button
+                      onClick={openFilePicker}
+                      disabled={busy}
+                      className="flex items-center gap-2 rounded-lg bg-slate-700 px-6 py-3 text-white transition hover:bg-slate-800 disabled:bg-gray-400"
+                    >
+                      <Upload className="h-5 w-5" />
+                      Upload File
+                    </button>
+
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="audio/*"
+                      className="hidden"
+                      onChange={handleFileSelected}
+                    />
+                  </>
                 )}
 
                 {recording && (

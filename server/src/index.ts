@@ -567,7 +567,7 @@ async function checkPythonReadiness(): Promise<ReadinessCheckResult> {
     return {
       isReady: false,
       modelLoaded: false,
-      error: `Python backend unreachable: ${err instanceof Error ? err.message : String(err)}`,
+      error: `Python backend connection failed: ${err instanceof Error ? err.message : String(err)}`,
     };
   }
 }
@@ -577,23 +577,29 @@ function buildReadinessBody(result: ReadinessCheckResult): Record<string, unknow
 
   if (!result.isReady) {
     return {
-      status: "not_ready",
+      status: "degraded",
       timestamp,
-      python_backend: result.error?.includes("unreachable") ? "unreachable" : "started",
-      model_loaded: result.modelLoaded,
-      reason: result.error || "Model not ready",
-      ...(result.modelVersion ? { model_version: result.modelVersion } : {}),
-      ...(result.device ? { device: result.device } : {}),
+      api_version: API_VERSION,
+      python_backend: {
+        status: "degraded",
+        model_loaded: result.modelLoaded,
+        ...(result.modelVersion ? { model_version: result.modelVersion } : {}),
+        ...(result.device ? { device: result.device } : {}),
+        ...(result.error ? { error: result.error } : { error: "Model not ready" }),
+      },
     };
   }
 
   return {
     status: "ready",
     timestamp,
-    python_backend: "ok",
-    model_loaded: true,
-    ...(result.modelVersion ? { model_version: result.modelVersion } : {}),
-    ...(result.device ? { device: result.device } : {}),
+    api_version: API_VERSION,
+    python_backend: {
+      status: "ready",
+      model_loaded: true,
+      ...(result.modelVersion ? { model_version: result.modelVersion } : {}),
+      ...(result.device ? { device: result.device } : {}),
+    },
   };
 }
 
@@ -720,7 +726,7 @@ async function forwardToPythonBackend(
     return {
       ok: false,
       status: 503,
-      error: "Model service temporarily unavailable",
+      error: "Model service degraded",
       details: err instanceof Error ? err.message : String(err),
     };
   }
@@ -858,10 +864,10 @@ export async function startServer(): Promise<Server> {
           api_version: API_VERSION,
           node_version: process.version,
           python_backend: {
-            status: "unavailable",
+            status: "degraded",
             error: isDev
               ? `Python backend responded with ${response.status}`
-              : "Python backend unavailable",
+              : "Python backend is degraded",
           },
           timestamp: new Date().toISOString(),
         });
@@ -872,7 +878,10 @@ export async function startServer(): Promise<Server> {
       res.json({
         api_version: API_VERSION,
         node_version: process.version,
-        python_backend: backendVersion,
+        python_backend: {
+          status: "ready",
+          ...backendVersion,
+        },
         timestamp: new Date().toISOString(),
       });
     } catch (err) {
@@ -880,8 +889,12 @@ export async function startServer(): Promise<Server> {
         api_version: API_VERSION,
         node_version: process.version,
         python_backend: {
-          status: "unreachable",
-          error: isDev ? (err instanceof Error ? err.message : String(err)) : "Python backend unreachable",
+          status: "degraded",
+          error: isDev
+            ? err instanceof Error
+              ? err.message
+              : String(err)
+            : "Python backend connection failed",
         },
         timestamp: new Date().toISOString(),
       });
