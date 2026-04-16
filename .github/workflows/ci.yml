@@ -19,19 +19,19 @@ jobs:
           node-version: 20
           cache: pnpm
 
-      - name: Enable Corepack
-        run: corepack enable
+      - name: Install pnpm via corepack
+        run: corepack enable pnpm
 
       - name: Install JS deps
-        run: corepack pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile
 
       - name: JS quality gates
         run: |
-          corepack pnpm check
-          corepack pnpm lint
-          corepack pnpm build
-          corepack pnpm test
-          corepack pnpm check:version
+          pnpm check
+          pnpm lint
+          pnpm build
+          pnpm test
+          pnpm check:version
 
       - name: Setup Python
         uses: actions/setup-python@v5
