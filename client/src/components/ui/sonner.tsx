@@ -1,12 +1,16 @@
 import { Toaster as Sonner, type ToasterProps } from "sonner";
 import type { CSSProperties } from "react";
+import { useEffect, useState } from "react";
 
 const Toaster = ({ ...props }: ToasterProps) => {
-  // Use system theme or default to 'light'
-  const theme = typeof window !== 'undefined' 
-    ? document.documentElement.classList.contains('dark') ? 'dark' : 'light'
-    : 'light';
-
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+  
+  // Use effect to detect theme after DOM is ready, avoiding race conditions
+  useEffect(() => {
+    const isDark = document.documentElement.classList.contains("dark");
+    setTheme(isDark ? "dark" : "light");
+  }, []);
+  
   return (
     <Sonner
       theme={theme}

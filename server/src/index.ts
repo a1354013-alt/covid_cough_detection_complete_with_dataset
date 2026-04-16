@@ -8,7 +8,7 @@ import type { FileInfo } from "busboy";
 
 import { convertToWav } from "./audio-converter.js";
 import { validateAudioFile } from "./audio-validator.js";
-import { API_VERSION } from "./config/version.js";
+import { API_VERSION } from "@shared/version.js";
 import { logger } from "./logger.js";
 
 interface PredictionResponse {

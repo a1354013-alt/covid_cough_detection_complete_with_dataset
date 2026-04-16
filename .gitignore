@@ -1,68 +1,61 @@
+```
 # Dependencies
 node_modules/
-**/node_modules/
 .pnpm-store/
+.npm/
+.yarn/
+.yarn-cache/
 
-# Build artifacts
+# Build outputs
 dist/
-client/dist/
-server/dist/
 build/
-**/dist/
-**/build/
-.vite/
 coverage/
-.nyc_output/
-*.tsbuildinfo
-
-# Python artifacts
-__pycache__/
-python_project/__pycache__/
-python_project/src/__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-.pytest_cache/
-python_project/.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.tox/
-.venv/
-venv/
-env/
-*.egg-info/
-
-# Runtime / temp
-*.log
-logs/
-tmp/
-temp/
-*.tmp
-*.temp
-*.pid
-*.pid.lock
-*.seed
-
-# Environment files
-.env
-.env.*
-!.env.example
-
-# OS / editor
+htmlcov/
+target/
 .DS_Store
 Thumbs.db
-.idea/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
+.env
+.env.local
+.env.*
+
+# Node.js
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# TypeScript/JavaScript
+*.tsbuildinfo
+.next/
+nuxt/dist/
+
+# Logs
+*.log
+*.tmp
+
+# IDE
 .vscode/
+.idea/
 *.swp
 *.swo
-*~
 
-# Archives / packaged outputs
-*.tar.gz
-*.zip
-*.tgz
+# Testing
+.mypy_cache/
+.pytest_cache/
+coverage.xml
+coverage.json
 
-# Project-specific transient dirs
-.manus-logs/
-python_project/data/
-python_project/models/
+# OS
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Icon?
+```
