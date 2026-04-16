@@ -45,6 +45,10 @@ jobs:
 
       - name: Python quality gates
         run: |
-          python -m pytest python_project/tests -q
+          python -m pytest python_project/tests -q --cov=covid_cough_detection --cov-report=term-missing
           python -m compileall python_project/src/covid_cough_detection
+
+      - name: Docker build validation
+        run: |
+          docker compose build --no-cache
 

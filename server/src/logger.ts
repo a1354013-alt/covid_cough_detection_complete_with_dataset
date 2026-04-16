@@ -40,6 +40,23 @@ class Logger {
   private formatEntry(entry: LogEntry): string {
     const { timestamp, level, message, context, error } = entry;
 
+    // Production: JSON format for structured logging
+    if (process.env.NODE_ENV === "production") {
+      const logObj: Record<string, unknown> = {
+        timestamp,
+        level,
+        message,
+      };
+      if (context && Object.keys(context).length > 0) {
+        logObj.context = context;
+      }
+      if (error) {
+        logObj.error = error;
+      }
+      return JSON.stringify(logObj);
+    }
+
+    // Development: Human-readable format
     let output = `[${timestamp}] ${level}: ${message}`;
 
     if (context && Object.keys(context).length > 0) {
@@ -48,7 +65,7 @@ class Logger {
 
     if (error) {
       output += ` | Error: ${error.name}: ${error.message}`;
-      if (process.env.NODE_ENV !== "production" && error.stack) {
+      if (error.stack) {
         output += `\n${error.stack}`;
       }
     }

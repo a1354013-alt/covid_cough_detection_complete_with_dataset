@@ -1,43 +1,71 @@
 ```
 # Dependencies
 node_modules/
-package-lock.json
-server/package-lock.json
+.python-version
+.venv/
+venv/
+__pycache__/
+*.egg-info/
+dist/
+build/
+target/
+
+# Environment
+.env
+.env.local
+.env.*
+
+# Logs and temporary files
+*.log
+*.tmp
+*.swp
+*.swo
+
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# Editors
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
 
 # Python
-__pycache__/
 *.pyc
 *.pyo
 *.pyd
 .Python
-env/
-venv/
-.venv/
-.ENV
-.env
-.env.local
-.env.*
-.venv.bak/
-pip-log.txt
-pip-delete-this-directory.txt
+*.so
 
-# Build artifacts
-dist/
-build/
-*.egg-info/
+# TypeScript/JavaScript
+*.tsbuildinfo
+.nyc_output
 
-# Logs
-*.log
-
-# Environment specific
-.env.local
-.env.*
-
-# Coverage reports
-.coverage
-coverage/
-htmlcov/
-.coverage.*
-.nyc_output/
-istanbul/
+# Compression
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
 ```

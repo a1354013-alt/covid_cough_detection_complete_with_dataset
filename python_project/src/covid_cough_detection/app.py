@@ -121,7 +121,16 @@ def normalize_exception_detail(detail: Any) -> tuple[str, Optional[str]]:
     return "Request failed", None
 
 
-allowed_origins = [origin.strip() for origin in os.getenv("ALLOWED_ORIGINS", "*").split(",")]
+# CORS configuration: restrict to known origins in production
+# Default \"*\" is only acceptable because Python service is not directly exposed to browsers
+# In production, it should be accessed only via Node.js gateway which enforces strict CORS
+allowed_origins_raw = os.getenv("ALLOWED_ORIGINS", "*")
+if allowed_origins_raw == "*":
+    # Only allow localhost for development when wildcard is used
+    allowed_origins = ["http://localhost:3000", "http://localhost:5173", "http://localhost:8000"]
+else:
+    allowed_origins = [origin.strip() for origin in allowed_origins_raw.split(",") if origin.strip()]
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
