@@ -26,6 +26,6 @@
     },
     "types": ["node"]
   },
-  "include": ["src/**/*.ts", "../shared/version.ts"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+  "include": ["src/**/*.ts", "src/**/*.test.ts", "../shared/version.ts"],
+  "exclude": ["node_modules", "dist"]
 }
