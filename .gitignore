@@ -1,61 +1,28 @@
 ```
 # Dependencies
 node_modules/
-.pnpm-store/
-.npm/
-.yarn/
-.yarn-cache/
+pnpm-lock.yaml
 
 # Build outputs
 dist/
 build/
-coverage/
-htmlcov/
 target/
-.DS_Store
-Thumbs.db
 
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-venv/
-.venv/
+# TypeScript
+*.tsbuildinfo
+*.tsx
+*.js
+*.jsx
+
+# Environment
 .env
 .env.local
 .env.*
 
-# Node.js
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-
-# TypeScript/JavaScript
-*.tsbuildinfo
-.next/
-nuxt/dist/
-
 # Logs
 *.log
-*.tmp
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-
-# Testing
-.mypy_cache/
-.pytest_cache/
-coverage.xml
-coverage.json
-
-# OS
-.DS_Store
-Thumbs.db
-ehthumbs.db
-Icon?
+# Coverage
+coverage/
+.nyc_output/
 ```

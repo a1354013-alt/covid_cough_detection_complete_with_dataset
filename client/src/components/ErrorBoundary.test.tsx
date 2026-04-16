@@ -1,4 +1,5 @@
-import { describe, it, expect } from "vitest";
+import { describe, it } from "node:test";
+import assert from "node:assert/strict";
 import { render, screen } from "@testing-library/react";
 import ErrorBoundary from "./ErrorBoundary";
 
@@ -16,12 +17,12 @@ describe("ErrorBoundary", () => {
         <TestComponent shouldThrow={false} />
       </ErrorBoundary>
     );
-    expect(screen.getByText("Success")).toBeInTheDocument();
+    assert.ok(screen.getByText("Success"));
   });
 
   it("should render fallback UI when error occurs", () => {
     const originalConsoleError = console.error;
-    console.error = vi.fn();
+    console.error = () => {};
 
     render(
       <ErrorBoundary>
@@ -29,7 +30,7 @@ describe("ErrorBoundary", () => {
       </ErrorBoundary>
     );
 
-    expect(screen.getByText(/something went wrong/i)).toBeInTheDocument();
+    assert.ok(screen.getByText(/something went wrong/i));
     
     console.error = originalConsoleError;
   });

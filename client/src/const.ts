@@ -27,6 +27,17 @@ export const SUPPORTED_AUDIO_FORMATS = {
   webm: ["audio/webm"],
 } as const;
 
+/** Backend MIME type prefixes for validation */
+export const SUPPORTED_BACKEND_MIME_PREFIXES = [
+  "audio/wav",
+  "audio/x-wav",
+  "audio/wave",
+  "audio/mpeg",
+  "audio/mp3",
+  "audio/ogg",
+  "audio/webm",
+] as const;
+
 export const ALL_SUPPORTED_MIME_TYPES = Object.values(SUPPORTED_AUDIO_FORMATS).flat() as ReadonlyArray<string>;
 
 export const SUPPORTED_AUDIO_EXTENSIONS = ["wav", "mp3", "ogg", "webm"] as const;
