@@ -271,6 +271,9 @@ class ApiClient {
 }
 
 export function formatPrediction(response: ApiPredictionResponse): UIPredictionResult {
+  // confidenceValue represents \"certainty\" (distance from 0.5), not accuracy
+  // prob=0.5 -> confidence=50% (maximum uncertainty)
+  // prob=0.0 or 1.0 -> confidence=100% (maximum certainty)
   const confidenceValue = Math.round(Math.max(response.prob, 1 - response.prob) * 100);
   const displayLabel =
     response.label === "positive" ? "Possible Positive Signal" : "Possible Negative Signal";

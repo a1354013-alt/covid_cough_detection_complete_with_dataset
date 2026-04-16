@@ -115,7 +115,8 @@ export function homeFlowReducer(state: HomeFlowState, action: HomeFlowAction): H
       };
 
     case "RECORDING_TICK":
-      if (state.phase !== "recording") return state;
+      // Always update recording time when tick is received, regardless of phase
+      // The timer should be cleaned up by the caller when phase changes
       return {
         ...state,
         recordingTime: action.seconds,

@@ -100,6 +100,12 @@ export class RateLimiter {
       this.map.delete(key);
     }
 
+    // Evict oldest entries if still at capacity after cleanup
+    // This provides defense-in-depth against memory exhaustion attacks
+    while (this.map.size >= this.maxEntries) {
+      this.evictOldest();
+    }
+
     if (expiredKeys.length > 0 && process.env.NODE_ENV !== 'production') {
       console.debug(`[RateLimiter] Cleaned ${expiredKeys.length} expired entries`);
     }
