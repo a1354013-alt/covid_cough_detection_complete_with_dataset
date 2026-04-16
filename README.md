@@ -1,160 +1,373 @@
 # COVID-19 Cough Signal Analysis
 
-Production-oriented full-stack project for cough-audio COVID-19 risk signal inference.
+[![CI](https://github.com/your-org/covid-cough-detection/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/covid-cough-detection/actions/workflows/ci.yml)
+[![Version](https://img.shields.io/badge/version-1.0.13-blue.svg)](https://github.com/your-org/covid-cough-detection/releases)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
-This repository is a research/demo system and **not** a medical diagnosis tool.
+Production-oriented full-stack system for cough-audio COVID-19 risk signal inference.
 
-## Architecture
+> ⚠️ **Disclaimer**: This repository is a research/demo system and **not** a medical diagnosis tool. Results should not be used for medical decision-making.
 
-- Frontend: React 19 + Vite + TypeScript + Tailwind
-- API Gateway: Node.js + Express + TypeScript
-- Inference Service: FastAPI + PyTorch
+## 🏗 Architecture
 
-Runtime flow:
-1. Browser uploads audio to `POST /api/predict` on Node gateway.
-2. Node validates audio contract and forwards to Python service.
-3. Python performs preprocessing + model inference and returns label/probability.
-
-## Repository Structure
-
-```text
-client/           React application
-server/           Node.js API gateway
-python_project/   FastAPI inference backend
-scripts/          Version sync and consistency checks
-shared/           Generated shared version metadata
-dataset/          Sample audio dataset + dataset tooling (not shipped to production)
-patches/          Development-only assets (not shipped to production unless explicitly required)
+```mermaid
+graph LR
+    A[React Frontend] -->|POST /api/predict| B[Node.js Gateway]
+    B -->|Validate & Forward| C[FastAPI Inference]
+    C -->|Preprocess + Model| D[PyTorch Model]
+    D -->|Results| C
+    C -->|JSON Response| B
+    B -->|Risk Assessment| A
 ```
 
-## Prerequisites
+**Technology Stack:**
+- **Frontend**: React 19 + Vite + TypeScript + Tailwind CSS + Radix UI
+- **API Gateway**: Node.js 20 + Express + TypeScript + Rate Limiting
+- **Inference Service**: FastAPI + PyTorch + Python 3.10+
+- **Deployment**: Docker Compose with health checks
 
-- Node.js 20+
-- Python 3.10+
-- `corepack` enabled
-- Root package manager is pinned to `pnpm@10.33.0`
+**Runtime Flow:**
+1. Browser uploads audio file to `POST /api/predict` on Node gateway
+2. Node validates audio contract (format, duration, size) and applies rate limiting
+3. Node forwards validated request to Python inference service
+4. Python performs preprocessing + model inference and returns label/probability
+5. Frontend displays risk assessment with appropriate disclaimers
 
-## Version Source of Truth
+## 📁 Repository Structure
 
-Root `package.json` version is the single source of truth.
+```
+covid-cough-detection/
+├── client/                 # React application (Vite + TypeScript)
+│   ├── src/
+│   │   ├── components/     # Reusable UI components
+│   │   ├── pages/          # Page-level components
+│   │   ├── lib/            # Utilities, API client, formatters
+│   │   └── const.ts        # Application constants
+│   ├── public/             # Static assets
+│   └── package.json
+├── server/                 # Node.js API gateway
+│   ├── src/
+│   │   ├── index.ts        # Express server entry point
+│   │   ├── audio-validator.ts   # Audio validation logic
+│   │   ├── audio-converter.ts   # FFmpeg-based conversion
+│   │   ├── rate-limiter.ts      # LRU rate limiting
+│   │   └── config/version.ts    # Auto-generated version
+│   └── package.json
+├── python_project/         # FastAPI inference backend
+│   ├── src/covid_cough_detection/
+│   │   ├── app.py          # FastAPI application
+│   │   ├── audio_processor.py   # Audio preprocessing
+│   │   ├── model_inference.py   # Model loading & inference
+│   │   └── version.py      # Auto-generated version
+│   ├── tests/              # Pytest test suite
+│   └── pyproject.toml
+├── shared/                 # Shared code between packages
+│   └── version.ts          # Auto-generated version metadata
+├── scripts/                # Build & maintenance scripts
+│   ├── sync-version.mjs    # Version synchronization
+│   └── check-version-consistency.mjs
+├── dataset/                # Sample datasets & tooling (dev only)
+├── .github/workflows/      # CI/CD pipelines
+├── docker-compose.yml      # Multi-service orchestration
+└── Dockerfile.node         # Production Node image with ffmpeg
+```
 
-After bumping root version, run:
+## 🚀 Quick Start
 
+### Prerequisites
+
+- **Node.js**: 20+ (LTS recommended)
+- **Python**: 3.10+
+- **pnpm**: 10.33.0 (managed via corepack)
+- **Docker** (optional, for containerized deployment)
+
+### Local Development
+
+1. **Clone and setup:**
 ```bash
-corepack pnpm run sync:version
+git clone https://github.com/your-org/covid-cough-detection.git
+cd covid-cough-detection
+corepack enable
 ```
 
-This regenerates and synchronizes:
-- `shared/version.ts`
-- `server/src/config/version.ts`
-- `python_project/src/covid_cough_detection/version.py`
-- `client/package.json` / `server/package.json` version fields
-- `python_project/pyproject.toml` version field
-
-The client imports `APP_VERSION` / `API_VERSION` from `shared/version.ts` (Vite alias `@shared/version`) so the UI stays aligned with the same generated constants as the Node gateway.
-
-## Local Development
-
-1. Install JavaScript dependencies (repo root):
-
+2. **Install JavaScript dependencies:**
 ```bash
 corepack pnpm install
 ```
 
-If pnpm reports **ignored build scripts** (for example `esbuild`), allow them so Vite can bundle: run `pnpm approve-builds` in the repo root and select the listed packages, or use the non-interactive approval flow documented in the [pnpm trust settings](https://pnpm.io/cli/approve-builds).
+> 💡 If pnpm reports "ignored build scripts" (e.g., esbuild), run `pnpm approve-builds` and select the listed packages.
 
-2. Install Python dependencies:
-
+3. **Install Python dependencies:**
 ```bash
 cd python_project
 pip install -e ".[dev]"
 cd ..
 ```
 
-3. Start Python inference service (strict startup):
-
+4. **Start Python inference service:**
 ```bash
+# Set model path (required)
+export MODEL_PATH=./models/model.pt  # macOS/Linux
+# set MODEL_PATH=./models/model.pt   # Windows
+
 cd python_project
-set MODEL_PATH=./models/model.pt
-# macOS/Linux: export MODEL_PATH=./models/model.pt
 python -m uvicorn covid_cough_detection.app:app --host 0.0.0.0 --port 8000 --reload
-cd ..
 ```
 
-4. Start frontend + Node gateway (repo root):
-
+5. **Start frontend + Node gateway:**
 ```bash
+# From repo root
 corepack pnpm dev
 ```
 
-- Frontend dev server: `http://localhost:5173`
-- Node gateway: `http://localhost:3000`
-- Python backend: `http://localhost:8000`
+**Access Points:**
+- Frontend: http://localhost:5173
+- Node Gateway: http://localhost:3000
+- Python Backend: http://localhost:8000
 
-## Runtime API Contract (Summary)
+## 🔧 Configuration
 
-Node API (`/api/*`):
-- `GET /api/healthz` (liveness)
-- `GET /api/readyz` (readiness)
-- `GET /api/health` (readiness mirror)
-- `GET /api/version`
-- `POST /api/predict` (`multipart/form-data`, single file, field `audio` or `file`)
+### Environment Variables
 
-Success prediction shape:
+**Node Gateway (`server/.env`):**
+```bash
+PYTHON_SERVICE_URL=http://localhost:8000
+ALLOWED_ORIGINS=http://localhost:5173
+NODE_ENV=development
+PORT=3000
+RATE_LIMIT_WINDOW_MS=60000
+RATE_LIMIT_MAX_REQUESTS=100
+```
 
+**Python Service:**
+```bash
+MODEL_PATH=./models/model.pt
+HOST=0.0.0.0
+PORT=8000
+LOG_LEVEL=info
+```
+
+### Model Requirements
+
+The system requires a PyTorch model file at `python_project/models/model.pt`:
+- Format: `.pt` (PyTorch checkpoint)
+- Input: Preprocessed audio features
+- Output: Binary classification (positive/negative) with probability
+
+> ⚠️ **Note**: This repository does not include a trained model. You must provide your own `model.pt` file.
+
+## 📡 API Documentation
+
+### Node Gateway Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/healthz` | Liveness probe |
+| GET | `/api/readyz` | Readiness probe (checks Python service) |
+| GET | `/api/health` | Readiness mirror |
+| GET | `/api/version` | Current version info |
+| POST | `/api/predict` | Audio prediction endpoint |
+
+### Prediction Request
+
+**Endpoint**: `POST /api/predict`
+
+**Content-Type**: `multipart/form-data`
+
+**Form Field**: `audio` (or `file`) - Audio file (WAV, MP3, FLAC, OGG)
+
+**Constraints**:
+- Maximum file size: 10MB
+- Supported formats: WAV, MP3, FLAC, OGG
+- Recommended duration: 1-10 seconds
+
+### Response Formats
+
+**Success Response (200):**
 ```json
 {
   "label": "positive",
   "prob": 0.84,
-  "model_version": "checkpoint-2026.04",
+  "model_version": "1.0.13",
   "processing_time_ms": 123.4
 }
 ```
 
-Error shape (Node and Python):
-
+**Error Response (4xx/5xx):**
 ```json
 {
-  "error": "Human readable summary",
-  "details": "Optional extra context"
+  "error": "Invalid audio format",
+  "details": "Expected WAV, MP3, FLAC, or OGG. Received: audio/x-custom"
 }
 ```
 
-## Quality Gates
+## ✅ Quality Gates
 
-Run from repo root:
+Run all quality checks before committing:
 
 ```bash
+# TypeScript type checking
 corepack pnpm check
+
+# ESLint linting
 corepack pnpm lint
+
+# Build verification
 corepack pnpm build
+
+# Unit tests (JS + Python)
 corepack pnpm test
+
+# Version consistency
 corepack pnpm check:version
+
+# Python-specific checks
 python -m pytest python_project/tests -q
 python -m compileall python_project/src
 ```
 
-## Docker Compose (Recommended Deploy Path)
+## 🐳 Docker Deployment
 
-The Node production image installs **ffmpeg** so the gateway can perform best-effort conversion to WAV when the uploaded MIME type is not already WAV (same behavior as a local dev machine with ffmpeg on `PATH`).
+### Production Deployment
+
+The Node production image includes **ffmpeg** for audio conversion:
 
 ```bash
 docker compose up --build
 ```
 
-Services:
-- Node gateway: `http://localhost:3000`
-- Python inference: `http://localhost:8000`
+**Services:**
+- `node-gateway`: http://localhost:3000
+- `python-inference`: http://localhost:8000
 
-Strict model contract:
-- Repo does **not** ship a real `model.pt`.
-- You must provide `python_project/models/model.pt`.
-- Without a valid model file, Python service startup failure is expected behavior.
-- Compose health/readiness is model-gated via Python `/readyz`.
+### Health Checks
 
-## Security and Operations Notes
+- Node gateway: `/api/healthz`, `/api/readyz`
+- Python service: `/healthz`, `/readyz`
 
-- Production must set `ALLOWED_ORIGINS` for Node.
-- Node applies CSP and security headers and enforces API rate limit.
-- Frontend shows risk signal wording (`Possible Positive Signal` / `Possible Negative Signal`) and never claims medical diagnosis.
-- `python_project/src/experimental/` is research-only code and not wired into production endpoints.
+Compose health checks are model-gated via Python `/readyz` endpoint.
+
+### Volume Mounts
+
+```yaml
+volumes:
+  - ./python_project/models:/app/models:ro
+  - ./python_project/logs:/app/logs
+```
+
+## 🔒 Security Considerations
+
+### Production Checklist
+
+- [ ] Set `ALLOWED_ORIGINS` for CORS (Node gateway)
+- [ ] Configure rate limiting parameters
+- [ ] Enable HTTPS termination (reverse proxy)
+- [ ] Set up log aggregation
+- [ ] Configure monitoring/alerting
+- [ ] Review CSP headers in `server/src/index.ts`
+- [ ] Validate model file integrity
+
+### Rate Limiting
+
+Default configuration:
+- Window: 60 seconds
+- Max requests per IP: 100
+- LRU eviction for memory safety
+
+Adjust in `server/src/rate-limiter.ts` or via environment variables.
+
+## 🧪 Testing
+
+### Test Structure
+
+```
+client/src/**/*.test.ts(x)   # React component & utility tests
+server/src/**/*.test.ts      # API gateway & validation tests
+python_project/tests/        # Python inference tests
+```
+
+### Running Tests
+
+```bash
+# All tests
+corepack pnpm test
+
+# Client tests only
+corepack pnpm --filter ./client test
+
+# Server tests only
+corepack pnpm --filter ./server test
+
+# Python tests
+python -m pytest python_project/tests -v
+```
+
+### Test Coverage Goals
+
+- Critical paths (validation, conversion): 100%
+- API endpoints: 90%+
+- UI components: 80%+
+
+## 📊 Version Management
+
+This project uses a monorepo version strategy:
+
+**Source of Truth**: Root `package.json` version field
+
+**Auto-Generated Files**:
+- `shared/version.ts`
+- `server/src/config/version.ts`
+- `python_project/src/covid_cough_detection/version.py`
+- `client/package.json`
+- `server/package.json`
+- `python_project/pyproject.toml`
+
+**After Version Bump**:
+```bash
+# Update root package.json version
+# Then run:
+corepack pnpm run sync:version
+
+# Verify consistency
+corepack pnpm run check:version
+```
+
+## 🤝 Contributing
+
+### Development Workflow
+
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Make changes with tests
+4. Run all quality gates
+5. Commit with conventional commits
+6. Push and open a Pull Request
+
+### Code Style
+
+- TypeScript: Strict mode enabled
+- Formatting: Prettier (auto-applied on commit)
+- Linting: ESLint with custom rules
+- Python: Black + isort + flake8
+
+## 📄 License
+
+MIT License - see [LICENSE](LICENSE) for details.
+
+## 🙏 Acknowledgments
+
+- Dataset: [CoughVID dataset](https://doi.org/10.5281/zenodo.3831669)
+- Framework: FastAPI, Express, React
+- ML: PyTorch ecosystem
+
+## 📞 Support
+
+For issues and questions:
+- GitHub Issues: [Report a bug](https://github.com/your-org/covid-cough-detection/issues)
+- Documentation: See `API_DOCUMENTATION.md`, `DEPLOYMENT_GUIDE.md`, `TESTING_GUIDE.md`
+
+---
+
+**Current Version**: 1.0.13  
+**Last Updated**: 2024-04-16  
+**Status**: Production-ready (research/demo purposes)
