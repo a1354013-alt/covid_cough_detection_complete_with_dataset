@@ -8,7 +8,7 @@ import type { FileInfo } from "busboy";
 
 import { convertToWav } from "./audio-converter.js";
 import { validateAudioFile } from "./audio-validator.js";
-import { API_VERSION } from "@shared/version.js";
+import { API_VERSION } from "./config/version.js";
 import { logger } from "./logger.js";
 import { RateLimiter } from "./rate-limiter.js";
 
@@ -637,9 +637,11 @@ async function forwardToPythonBackend(
 
   try {
     const formData = new FormData();
+    const payloadBytes = new Uint8Array(payloadBuffer);
+
     formData.append(
       "file",
-      new Blob([new Uint8Array(payloadBuffer)], { type: payloadMimeType }),
+      new Blob([payloadBytes], { type: payloadMimeType }),
       payloadFileName
     );
 

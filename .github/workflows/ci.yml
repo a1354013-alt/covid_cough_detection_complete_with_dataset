@@ -13,6 +13,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # actions/setup-node cache for pnpm expects a pnpm executable to exist
+      # (it queries the pnpm store path). Install pnpm before setup-node runs.
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -24,6 +26,11 @@ jobs:
           node-version: 20
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
+
+      - name: Verify toolchain
+        run: |
+          node -v
+          pnpm -v
 
       - name: Install JS deps
         run: pnpm install --frozen-lockfile
@@ -39,7 +46,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: "3.11"
 
       - name: Install Python deps
         run: |

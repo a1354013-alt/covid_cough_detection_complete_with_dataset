@@ -4,7 +4,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
-import { API_VERSION } from "@shared/version.js";
+import { API_VERSION } from "./config/version.js";
 
 const gatewayPort = 3110;
 const fakePythonPort = 3810;
