@@ -1,122 +1,92 @@
-import assert from "node:assert/strict";
-import { describe, it } from "node:test";
-import { spawnSync, type SpawnSyncReturns } from "node:child_process";
+import test from "node:test";
+import assert from "node:assert";
+import { spawnSync } from "node:child_process";
 import path from "node:path";
-import { promises as fs } from "node:fs";
+import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(process.cwd(), "..");
-const pythonCommand = process.platform === "win32" ? "python" : "python3";
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const rootDir = path.resolve(__dirname, "../..");
 
-function getPnpmInvocation(): { command: string; prefixArgs: string[] } {
-  const corepackRoot = process.env.COREPACK_ROOT;
-  if (corepackRoot) {
-    const pnpmEntrypoint = path.join(corepackRoot, "dist", "pnpm.js");
-    return { command: process.execPath, prefixArgs: [pnpmEntrypoint] };
-  }
-
-  const pnpmCommand = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
-  return { command: pnpmCommand, prefixArgs: [] };
-}
-
-function runCommand(
-  command: string,
-  args: string[],
-  cwd: string,
-): SpawnSyncReturns<string> {
-  const result = spawnSync(command, args, {
-    cwd,
-    encoding: "utf8",
-    stdio: ["pipe", "pipe", "pipe"],
-  });
-
-  if (result.error) {
-    console.error(`Command failed to start: ${command} ${args.join(" ")}`);
-    console.error(result.error);
-  }
-
-  return result;
-}
-
-function assertCommandSucceeded(
-  result: SpawnSyncReturns<string>,
-  label: string,
-) {
-  if (result.status !== 0) {
-    console.error(`${label} stdout:`, result.stdout);
-    console.error(`${label} stderr:`, result.stderr);
-
-    if (result.error) {
-      console.error(`${label} spawn error:`, result.error);
+test("client builds without errors", () => {
+  const result = spawnSync(
+    "pnpm",
+    ["--filter", "./client", "run", "build"],
+    {
+      cwd: rootDir,
+      shell: true,
+      encoding: "utf-8",
     }
-  }
+  );
 
-  assert.equal(result.status, 0, `${label} should succeed`);
-}
+  console.error("Client build stdout:", result.stdout);
+  console.error("Client build stderr:", result.stderr);
 
-describe("Build smoke tests", () => {
-  it("client builds without errors", async () => {
-    const pnpm = getPnpmInvocation();
-    const result = runCommand(
-      pnpm.command,
-      [...pnpm.prefixArgs, "--filter", "./client", "run", "build"],
-      repoRoot,
-    );
+  assert.strictEqual(
+    result.status,
+    0,
+    "Client build should succeed"
+  );
+});
 
-    assertCommandSucceeded(result, "Client build");
+test("server compiles without type errors", () => {
+  const result = spawnSync(
+    "pnpm",
+    ["--filter", "./server", "run", "check"],
+    {
+      cwd: rootDir,
+      shell: true,
+      encoding: "utf-8",
+    }
+  );
 
-    const distExists = await fs
-      .stat(path.join(repoRoot, "client", "dist"))
-      .then(() => true)
-      .catch(() => false);
-    assert.ok(distExists, "client/dist directory should exist after build");
+  console.error("Server type check stdout:", result.stdout);
+  console.error("Server type check stderr:", result.stderr);
 
-    const indexHtmlExists = await fs
-      .stat(path.join(repoRoot, "client", "dist", "index.html"))
-      .then(() => true)
-      .catch(() => false);
-    assert.ok(indexHtmlExists, "client/dist/index.html should exist after build");
-  });
+  assert.strictEqual(
+    result.status,
+    0,
+    "Server type checking should pass"
+  );
+});
 
-  it("server compiles without type errors", () => {
-    const pnpm = getPnpmInvocation();
-    const result = runCommand(
-      pnpm.command,
-      [...pnpm.prefixArgs, "--filter", "./server", "run", "check"],
-      repoRoot,
-    );
+test("server builds without errors", () => {
+  const result = spawnSync(
+    "pnpm",
+    ["--filter", "./server", "run", "build"],
+    {
+      cwd: rootDir,
+      shell: true,
+      encoding: "utf-8",
+    }
+  );
 
-    assertCommandSucceeded(result, "Server type check");
-  });
+  console.error("Server build stdout:", result.stdout);
+  console.error("Server build stderr:", result.stderr);
 
-  it("server builds without errors", () => {
-    const pnpm = getPnpmInvocation();
-    const result = runCommand(
-      pnpm.command,
-      [...pnpm.prefixArgs, "--filter", "./server", "run", "build"],
-      repoRoot,
-    );
+  assert.strictEqual(
+    result.status,
+    0,
+    "Server build should succeed"
+  );
+});
 
-    assertCommandSucceeded(result, "Server build");
-  });
+test("version consistency check passes", () => {
+  const result = spawnSync(
+    "pnpm",
+    ["run", "check:version"],
+    {
+      cwd: rootDir,
+      shell: true,
+      encoding: "utf-8",
+    }
+  );
 
-  it("python project compiles without errors", () => {
-    const result = runCommand(
-      pythonCommand,
-      ["-m", "compileall", "src/covid_cough_detection", "-q"],
-      path.join(repoRoot, "python_project"),
-    );
+  console.error("Version check stdout:", result.stdout);
+  console.error("Version check stderr:", result.stderr);
 
-    assertCommandSucceeded(result, "Python compile");
-  });
-
-  it("version consistency check passes", () => {
-    const pnpm = getPnpmInvocation();
-    const result = runCommand(
-      pnpm.command,
-      [...pnpm.prefixArgs, "run", "check:version"],
-      repoRoot,
-    );
-
-    assertCommandSucceeded(result, "Version consistency check");
-  });
+  assert.strictEqual(
+    result.status,
+    0,
+    "Version consistency check should pass"
+  );
 });

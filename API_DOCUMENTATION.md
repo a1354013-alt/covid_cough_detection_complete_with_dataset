@@ -35,7 +35,7 @@ Success (`200`):
   "status": "alive",
   "timestamp": "2026-04-10T00:00:00.000Z",
   "service": "covid-cough-detection-api",
-  "version": "1.0.13"
+  "version": "{{VERSION}}"
 }
 ```
 
@@ -48,7 +48,7 @@ Ready (`200`):
 {
   "status": "ready",
   "timestamp": "2026-04-10T00:00:00.000Z",
-  "api_version": "1.0.13",
+  "api_version": "{{VERSION}}",
   "python_backend": {
     "status": "ready",
     "model_loaded": true,
@@ -64,7 +64,7 @@ Degraded (`503`):
 {
   "status": "degraded",
   "timestamp": "2026-04-10T00:00:00.000Z",
-  "api_version": "1.0.13",
+  "api_version": "{{VERSION}}",
   "python_backend": {
     "status": "degraded",
     "model_loaded": false,
@@ -83,10 +83,10 @@ Success (`200`) example:
 
 ```json
 {
-  "api_version": "1.0.13",
+  "api_version": "{{VERSION}}",
   "node_version": "v22.14.0",
   "python_backend": {
-    "api_version": "1.0.13",
+    "api_version": "{{VERSION}}",
     "model_version": "checkpoint-2026.04",
     "model_ready": true,
     "device": "cpu",
@@ -100,7 +100,7 @@ Degraded (`200`) example when Python connection fails:
 
 ```json
 {
-  "api_version": "1.0.13",
+  "api_version": "{{VERSION}}",
   "node_version": "v22.14.0",
   "python_backend": {
     "status": "degraded",

@@ -1,4 +1,4 @@
-/** Synced via root `pnpm run sync:version` (same source as `server/src/config/version.ts`). */
+/** Synced via root `pnpm run sync:version` (same source as server). */
 export { API_VERSION, APP_VERSION } from "@shared/version";
 
 export const APP_NAME = "COVID-19 Cough Signal Analysis";
@@ -27,23 +27,20 @@ export const SUPPORTED_AUDIO_FORMATS = {
   webm: ["audio/webm"],
 } as const;
 
-export const ALL_SUPPORTED_MIME_TYPES = Object.values(SUPPORTED_AUDIO_FORMATS).flat() as ReadonlyArray<string>;
-
-export const SUPPORTED_AUDIO_EXTENSIONS = ["wav", "mp3", "ogg", "webm"] as const;
-
-/**
- * MIME type prefixes for backend validation.
- * Used when actual MIME type is present.
- */
+/** Backend MIME type prefixes for validation */
 export const SUPPORTED_BACKEND_MIME_PREFIXES = [
-  "audio/webm",
-  "audio/ogg",
-  "audio/mpeg",
-  "audio/mp3",
   "audio/wav",
   "audio/x-wav",
   "audio/wave",
+  "audio/mpeg",
+  "audio/mp3",
+  "audio/ogg",
+  "audio/webm",
 ] as const;
+
+export const ALL_SUPPORTED_MIME_TYPES = Object.values(SUPPORTED_AUDIO_FORMATS).flat() as ReadonlyArray<string>;
+
+export const SUPPORTED_AUDIO_EXTENSIONS = ["wav", "mp3", "ogg", "webm"] as const;
 
 export const PREFERRED_RECORDER_MIME_TYPES = [
   "audio/webm;codecs=opus",

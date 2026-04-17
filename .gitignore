@@ -1,68 +1,53 @@
+```
 # Dependencies
 node_modules/
-**/node_modules/
-.pnpm-store/
 
-# Build artifacts
+# Build outputs
 dist/
-client/dist/
-server/dist/
 build/
-**/dist/
-**/build/
-.vite/
-coverage/
-.nyc_output/
+target/
+
+# TypeScript/JavaScript specific
+*.js.map
 *.tsbuildinfo
+.nyc_output/
+coverage/
 
-# Python artifacts
-__pycache__/
-python_project/__pycache__/
-python_project/src/__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-.pytest_cache/
-python_project/.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.tox/
-.venv/
-venv/
-env/
-*.egg-info/
-
-# Runtime / temp
-*.log
-logs/
-tmp/
-temp/
-*.tmp
-*.temp
-*.pid
-*.pid.lock
-*.seed
-
-# Environment files
+# Environment variables
 .env
-.env.*
-!.env.example
+.env.local
+*.env.*
 
-# OS / editor
-.DS_Store
-Thumbs.db
-.idea/
+# Logs
+*.log
+
+# IDE files
 .vscode/
+.idea/
 *.swp
 *.swo
-*~
 
-# Archives / packaged outputs
-*.tar.gz
-*.zip
-*.tgz
+# OS generated files
+.DS_Store
+Thumbs.db
 
-# Project-specific transient dirs
-.manus-logs/
-python_project/data/
-python_project/models/
+# Test coverage
+coverage/
+htmlcov/
+*.coverage
+
+# Python related (if any Python in project)
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+nosetests.xml
+```

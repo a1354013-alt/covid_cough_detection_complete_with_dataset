@@ -10,8 +10,7 @@
       "@shared/*": ["../shared/*"]
     },
     "outDir": "./dist",
-    "skipLibCheck": true,
-    "rootDir": ".."
+    "skipLibCheck": true
   },
   "include": ["src", "vite-env.d.ts", "../shared/version.ts"],
   "exclude": ["node_modules", "dist", "build"]

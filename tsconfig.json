@@ -20,9 +20,8 @@
     "noUnusedParameters": true,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
-    "composite": true,
     "baseUrl": "."
   },
   "include": [],
-  "exclude": ["node_modules", "dist", "build", "**/*.test.ts", "**/*.test.tsx"]
+  "exclude": ["node_modules", "dist", "build"]
 }

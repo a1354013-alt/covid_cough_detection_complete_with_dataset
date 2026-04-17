@@ -10,6 +10,7 @@ import { convertToWav } from "./audio-converter.js";
 import { validateAudioFile } from "./audio-validator.js";
 import { API_VERSION } from "./config/version.js";
 import { logger } from "./logger.js";
+import { RateLimiter } from "./rate-limiter.js";
 
 interface PredictionResponse {
   label: "positive" | "negative";
@@ -30,11 +31,6 @@ interface ParseMultipartResult {
   status?: number;
   error?: string;
   details?: string;
-}
-
-interface RateLimitEntry {
-  count: number;
-  resetAt: number;
 }
 
 interface RateLimitResult {
@@ -97,9 +93,11 @@ logger.info("Server configuration", {
   csp_connect_src_extra: CONNECT_SRC_EXTRA,
 });
 
-const rateLimitMap = new Map<string, RateLimitEntry>();
-const cleanupInterval = setInterval(cleanupRateLimitEntries, RATE_LIMIT_CLEANUP_INTERVAL_MS);
-cleanupInterval.unref();
+const rateLimiter = new RateLimiter(RATE_LIMIT_WINDOW_MS, RATE_LIMIT_MAX_REQUESTS, {
+  maxEntries: 10000,
+  cleanupIntervalMs: RATE_LIMIT_CLEANUP_INTERVAL_MS,
+});
+rateLimiter.start();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -149,51 +147,13 @@ function parseConnectSrcExtra(raw: string | undefined): string[] {
     .filter((value) => value.length > 0);
 }
 
-function cleanupRateLimitEntries(): void {
-  const now = Date.now();
-  const expiredKeys: string[] = [];
-
-  for (const [key, entry] of rateLimitMap.entries()) {
-    if (entry.resetAt <= now) {
-      expiredKeys.push(key);
-    }
-  }
-
-  for (const key of expiredKeys) {
-    rateLimitMap.delete(key);
-  }
-
-  if (expiredKeys.length > 0) {
-    logger.debug("Cleaned expired rate limit entries", { removed: expiredKeys.length });
-  }
-}
-
 function getRateLimitKey(req: Request): string {
   return req.ip || req.socket.remoteAddress || "unknown";
 }
 
 function checkRateLimit(req: Request): RateLimitResult {
   const key = getRateLimitKey(req);
-  const now = Date.now();
-
-  const existing = rateLimitMap.get(key);
-  if (!existing || existing.resetAt <= now) {
-    const resetAt = now + RATE_LIMIT_WINDOW_MS;
-    rateLimitMap.set(key, { count: 1, resetAt });
-    return {
-      allowed: true,
-      remaining: Math.max(0, RATE_LIMIT_MAX_REQUESTS - 1),
-      resetAt,
-    };
-  }
-
-  existing.count += 1;
-  const remaining = Math.max(0, RATE_LIMIT_MAX_REQUESTS - existing.count);
-  return {
-    allowed: existing.count <= RATE_LIMIT_MAX_REQUESTS,
-    remaining,
-    resetAt: existing.resetAt,
-  };
+  return rateLimiter.check(key);
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -677,7 +637,13 @@ async function forwardToPythonBackend(
 
   try {
     const formData = new FormData();
-    formData.append("file", new Blob([payloadBuffer], { type: payloadMimeType }), payloadFileName);
+    const payloadBytes = new Uint8Array(payloadBuffer);
+
+    formData.append(
+      "file",
+      new Blob([payloadBytes], { type: payloadMimeType }),
+      payloadFileName
+    );
 
     const response = await fetch(`${PYTHON_API_URL}/predict`, {
       method: "POST",

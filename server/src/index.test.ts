@@ -57,7 +57,7 @@ async function postAudio(
   ip = nextIp()
 ): Promise<Response> {
   const form = new FormData();
-  form.append("audio", new Blob([buffer], { type: mimeType }), filename);
+  form.append("audio", new Blob([new Uint8Array(buffer)], { type: mimeType }), filename);
 
   return fetch(`${gatewayBaseUrl}/api/predict`, {
     method: "POST",
@@ -375,8 +375,16 @@ describe("node gateway critical paths", () => {
 
   it("POST /api/predict rejects multiple uploaded files", async () => {
     const form = new FormData();
-    form.append("audio", new Blob([createMinimalWavBuffer()], { type: "audio/wav" }), "one.wav");
-    form.append("audio", new Blob([createMinimalWavBuffer()], { type: "audio/wav" }), "two.wav");
+    form.append(
+      "audio",
+      new Blob([new Uint8Array(createMinimalWavBuffer())], { type: "audio/wav" }),
+      "one.wav"
+    );
+    form.append(
+      "audio",
+      new Blob([new Uint8Array(createMinimalWavBuffer())], { type: "audio/wav" }),
+      "two.wav"
+    );
 
     const response = await fetch(`${gatewayBaseUrl}/api/predict`, {
       method: "POST",
