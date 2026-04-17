@@ -10,7 +10,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { promises as fs } from "node:fs";
 import path from "node:path";
 
-import { API_VERSION } from "@shared/version";
+import { API_VERSION } from "../../shared/version";
 
 const gatewayPort = 3110;
 const fakePythonPort = 3810;
