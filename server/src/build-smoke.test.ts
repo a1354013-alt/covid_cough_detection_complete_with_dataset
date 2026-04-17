@@ -5,8 +5,18 @@ import path from "node:path";
 import { promises as fs } from "node:fs";
 
 const repoRoot = path.resolve(process.cwd(), "..");
-const packageManagerCommand = process.platform === "win32" ? "corepack.cmd" : "corepack";
 const pythonCommand = process.platform === "win32" ? "python" : "python3";
+
+function getPnpmInvocation(): { command: string; prefixArgs: string[] } {
+  const corepackRoot = process.env.COREPACK_ROOT;
+  if (corepackRoot) {
+    const pnpmEntrypoint = path.join(corepackRoot, "dist", "pnpm.js");
+    return { command: process.execPath, prefixArgs: [pnpmEntrypoint] };
+  }
+
+  const pnpmCommand = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
+  return { command: pnpmCommand, prefixArgs: [] };
+}
 
 function runCommand(
   command: string,
@@ -45,9 +55,10 @@ function assertCommandSucceeded(
 
 describe("Build smoke tests", () => {
   it("client builds without errors", async () => {
+    const pnpm = getPnpmInvocation();
     const result = runCommand(
-      packageManagerCommand,
-      ["pnpm", "--filter", "./client", "run", "build"],
+      pnpm.command,
+      [...pnpm.prefixArgs, "--filter", "./client", "run", "build"],
       repoRoot,
     );
 
@@ -67,9 +78,10 @@ describe("Build smoke tests", () => {
   });
 
   it("server compiles without type errors", () => {
+    const pnpm = getPnpmInvocation();
     const result = runCommand(
-      packageManagerCommand,
-      ["pnpm", "--filter", "./server", "run", "check"],
+      pnpm.command,
+      [...pnpm.prefixArgs, "--filter", "./server", "run", "check"],
       repoRoot,
     );
 
@@ -77,9 +89,10 @@ describe("Build smoke tests", () => {
   });
 
   it("server builds without errors", () => {
+    const pnpm = getPnpmInvocation();
     const result = runCommand(
-      packageManagerCommand,
-      ["pnpm", "--filter", "./server", "run", "build"],
+      pnpm.command,
+      [...pnpm.prefixArgs, "--filter", "./server", "run", "build"],
       repoRoot,
     );
 
@@ -97,9 +110,10 @@ describe("Build smoke tests", () => {
   });
 
   it("version consistency check passes", () => {
+    const pnpm = getPnpmInvocation();
     const result = runCommand(
-      packageManagerCommand,
-      ["pnpm", "run", "check:version"],
+      pnpm.command,
+      [...pnpm.prefixArgs, "run", "check:version"],
       repoRoot,
     );
 

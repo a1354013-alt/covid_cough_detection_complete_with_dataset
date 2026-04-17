@@ -13,6 +13,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # actions/setup-node cache for pnpm expects a pnpm executable to exist
+      # (it queries the pnpm store path). Install pnpm before setup-node runs.
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+          run_install: false
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -36,7 +44,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: "3.11"
 
       - name: Install Python deps
         run: |
@@ -47,4 +55,3 @@ jobs:
         run: |
           python -m pytest python_project/tests -q
           python -m compileall python_project/src/covid_cough_detection
-
