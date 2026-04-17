@@ -1,2 +1,0 @@
-
-D:\git\covid_cough_detection_complete_with_dataset\server>  "C:\Program Files\nodejs\\node.exe"  "C:\Program Files\nodejs\\node_modules\corepack\dist\corepack.js" pnpm -s exec node -e console.log(Object.keys(process.env).filter(k=
