@@ -1,3 +1,9 @@
+// 將 Node.js Buffer 轉為 BlobPart
+function bufferToBlobPart(buffer: Buffer): ArrayBuffer {
+  // Always copy to a new ArrayBuffer to avoid SharedArrayBuffer issues
+  const uint8 = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+  return uint8.slice().buffer;
+}
 import assert from "node:assert/strict";
 import { after, before, describe, it } from "node:test";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
@@ -56,8 +62,9 @@ async function postAudio(
   mimeType = "audio/wav",
   ip = nextIp()
 ): Promise<Response> {
+
   const form = new FormData();
-  form.append("audio", new Blob([buffer], { type: mimeType }), filename);
+  form.append("audio", new Blob([bufferToBlobPart(buffer)], { type: mimeType }), filename);
 
   return fetch(`${gatewayBaseUrl}/api/predict`, {
     method: "POST",
@@ -374,9 +381,18 @@ describe("node gateway critical paths", () => {
   });
 
   it("POST /api/predict rejects multiple uploaded files", async () => {
+
     const form = new FormData();
-    form.append("audio", new Blob([createMinimalWavBuffer()], { type: "audio/wav" }), "one.wav");
-    form.append("audio", new Blob([createMinimalWavBuffer()], { type: "audio/wav" }), "two.wav");
+    form.append(
+      "audio",
+      new Blob([bufferToBlobPart(createMinimalWavBuffer())], { type: "audio/wav" }),
+      "one.wav"
+    );
+    form.append(
+      "audio",
+      new Blob([bufferToBlobPart(createMinimalWavBuffer())], { type: "audio/wav" }),
+      "two.wav"
+    );
 
     const response = await fetch(`${gatewayBaseUrl}/api/predict`, {
       method: "POST",

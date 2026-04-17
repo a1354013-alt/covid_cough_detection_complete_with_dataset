@@ -33,15 +33,17 @@ interface ParseMultipartResult {
   details?: string;
 }
 
-interface RateLimitEntry {
-  count: number;
-  resetAt: number;
-}
 
 interface RateLimitResult {
   allowed: boolean;
   remaining: number;
   resetAt: number;
+}
+// 將 Node.js Buffer 轉為 BlobPart
+function bufferToBlobPart(buffer: Buffer): ArrayBuffer {
+  // Always copy to a new ArrayBuffer to avoid SharedArrayBuffer issues
+  const uint8 = new Uint8Array(buffer.buffer, buffer.byteOffset, buffer.byteLength);
+  return uint8.slice().buffer;
 }
 
 interface BackendForwardSuccess {
@@ -640,9 +642,14 @@ async function forwardToPythonBackend(
     });
   }
 
+
   try {
     const formData = new FormData();
-    formData.append("file", new Blob([payloadBuffer], { type: payloadMimeType }), payloadFileName);
+    formData.append(
+      "file",
+      new Blob([bufferToBlobPart(payloadBuffer)], { type: payloadMimeType }),
+      payloadFileName
+    );
 
     const response = await fetch(`${PYTHON_API_URL}/predict`, {
       method: "POST",

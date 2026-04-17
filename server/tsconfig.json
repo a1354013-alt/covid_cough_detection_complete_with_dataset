@@ -18,13 +18,13 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
+    "rootDir": "..",
     "outDir": "./dist",
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
       "@shared/*": ["../shared/*"]
     },
-    "types": ["node"]
+    "types": ["node"],   
   },
   "include": ["src/**/*.ts", "src/**/*.test.ts", "../shared/version.ts"],
   "exclude": ["node_modules", "dist"]
