@@ -105,7 +105,7 @@ export function validateAudioFile(
 
   if (filename) {
     const ext = filename.toLowerCase().split(".").pop();
-    if (!SUPPORTED_EXTENSIONS.includes(ext || "")) {
+    if (!ext || !SUPPORTED_EXTENSIONS.includes(ext)) {
       return {
         valid: false,
         error: `Invalid file extension. Supported formats: ${SUPPORTED_EXTENSIONS.join(", ")}`,
@@ -113,8 +113,9 @@ export function validateAudioFile(
       };
     }
 
+    // Validate that extension matches detected format
     const allowedExts = FORMAT_TO_EXTENSIONS[detectedFormat] || [];
-    if (ext && !allowedExts.includes(ext)) {
+    if (!allowedExts.includes(ext)) {
       return {
         valid: false,
         error: `File extension '.${ext}' does not match detected format '${detectedFormat}'. Expected: ${allowedExts.join(", ")}`,

@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import assert from "node:assert/strict";
+import { afterEach, beforeEach, describe, it } from "node:test";
 import { RateLimiter } from "./rate-limiter.js";
 
 describe("RateLimiter", () => {
@@ -16,8 +17,8 @@ describe("RateLimiter", () => {
     it("should allow requests under limit", () => {
       for (let i = 0; i < 5; i++) {
         const result = limiter.check("test-key");
-        expect(result.allowed).toBe(true);
-        expect(result.remaining).toBe(4 - i);
+        assert.equal(result.allowed, true);
+        assert.equal(result.remaining, 4 - i);
       }
     });
 
@@ -27,17 +28,17 @@ describe("RateLimiter", () => {
       }
       
       const result = limiter.check("test-key");
-      expect(result.allowed).toBe(false);
-      expect(result.remaining).toBe(0);
+      assert.equal(result.allowed, false);
+      assert.equal(result.remaining, 0);
     });
 
     it("should track different keys independently", () => {
       const result1 = limiter.check("key1");
       const result2 = limiter.check("key2");
       
-      expect(result1.allowed).toBe(true);
-      expect(result2.allowed).toBe(true);
-      expect(limiter.getSize()).toBe(2);
+      assert.equal(result1.allowed, true);
+      assert.equal(result2.allowed, true);
+      assert.equal(limiter.getSize(), 2);
     });
   });
 
@@ -49,32 +50,34 @@ describe("RateLimiter", () => {
       smallLimiter.check("key2");
       smallLimiter.check("key3");
       
-      expect(smallLimiter.getSize()).toBe(3);
+      assert.equal(smallLimiter.getSize(), 3);
       
       // This should trigger eviction
       smallLimiter.check("key4");
       
-      expect(smallLimiter.getSize()).toBeLessThanOrEqual(3);
+      assert.ok(smallLimiter.getSize() <= 3);
       smallLimiter.stop();
     });
   });
 
   describe("cleanup", () => {
     it("should remove expired entries", () => {
-      vi.useFakeTimers();
-      
       const shortLimiter = new RateLimiter(1000, 5, { maxEntries: 100, cleanupIntervalMs: 100 });
-      shortLimiter.start();
       
       shortLimiter.check("temp-key");
-      expect(shortLimiter.getSize()).toBe(1);
-      
-      vi.advanceTimersByTime(2000);
-      shortLimiter["cleanup"]();
-      
-      expect(shortLimiter.getSize()).toBe(0);
+      assert.equal(shortLimiter.getSize(), 1);
+
+      const internal = shortLimiter as unknown as {
+        cleanup: () => void;
+        map: Map<string, { resetAt: number }>;
+      };
+      const entry = internal.map.get("temp-key");
+      assert.ok(entry);
+      entry.resetAt = Date.now() - 1;
+      internal.cleanup();
+
+      assert.equal(shortLimiter.getSize(), 0);
       shortLimiter.stop();
-      vi.useRealTimers();
     });
   });
 
@@ -82,22 +85,23 @@ describe("RateLimiter", () => {
     it("should start and stop cleanup interval", () => {
       const testLimiter = new RateLimiter(60000, 5);
       
-      expect(testLimiter["cleanupInterval"]).toBeNull();
+      const internal = testLimiter as unknown as { cleanupInterval: NodeJS.Timeout | null };
+      assert.equal(internal.cleanupInterval, null);
       
       testLimiter.start();
-      expect(testLimiter["cleanupInterval"]).not.toBeNull();
+      assert.notEqual(internal.cleanupInterval, null);
       
       testLimiter.stop();
-      expect(testLimiter["cleanupInterval"]).toBeNull();
+      assert.equal(internal.cleanupInterval, null);
     });
 
     it("should clear all entries", () => {
       limiter.check("key1");
       limiter.check("key2");
-      expect(limiter.getSize()).toBe(2);
+      assert.equal(limiter.getSize(), 2);
       
       limiter.clear();
-      expect(limiter.getSize()).toBe(0);
+      assert.equal(limiter.getSize(), 0);
     });
   });
 });

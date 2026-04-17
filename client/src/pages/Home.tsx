@@ -513,7 +513,7 @@ export default function Home() {
                       <div
                         className={`h-2 rounded-full transition-all ${signalPresentation.toneBarClass}`}
                         style={{
-                          width: state.prediction.confidenceText,
+                          width: `${state.prediction.confidenceValue}%`,
                           opacity: confidenceOpacity,
                         }}
                       />

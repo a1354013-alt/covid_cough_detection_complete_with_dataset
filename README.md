@@ -24,7 +24,6 @@ python_project/   FastAPI inference backend
 scripts/          Version sync and consistency checks
 shared/           Generated shared version metadata
 dataset/          Sample audio dataset + dataset tooling (not shipped to production)
-patches/          Development-only assets (not shipped to production unless explicitly required)
 ```
 
 ## Prerequisites

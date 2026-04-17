@@ -1,53 +1,71 @@
 ```
 # Dependencies
 node_modules/
-
-# Build outputs
+.python-version
+.venv/
+venv/
+__pycache__/
+*.egg-info/
 dist/
 build/
 target/
 
-# TypeScript/JavaScript specific
-*.js.map
-*.tsbuildinfo
-.nyc_output/
-coverage/
-
-# Environment variables
+# Environment
 .env
 .env.local
-*.env.*
+.env.*
 
-# Logs
+# Logs and temporary files
 *.log
-
-# IDE files
-.vscode/
-.idea/
+*.tmp
 *.swp
 *.swo
 
-# OS generated files
+# Coverage
+coverage/
+htmlcov/
+.coverage
+
+# Editors
+.vscode/
+.idea/
+
+# OS
 .DS_Store
 Thumbs.db
 
-# Test coverage
-coverage/
-htmlcov/
-*.coverage
-
-# Python related (if any Python in project)
-__pycache__/
+# Python
 *.pyc
 *.pyo
 *.pyd
 .Python
-env/
-venv/
-.venv/
-pip-log.txt
-pip-delete-this-directory.txt
-.tox/
-.coverage
-nosetests.xml
+*.so
+
+# TypeScript/JavaScript
+*.tsbuildinfo
+.nyc_output
+
+# Compression
+*.zip
+*.gz
+*.tar
+*.tgz
+*.bz2
+*.xz
+*.7z
+*.rar
+*.zst
+*.lz4
+*.lzh
+*.cab
+*.arj
+*.rpm
+*.deb
+*.Z
+*.lz
+*.lzo
+*.tar.gz
+*.tar.bz2
+*.tar.xz
+*.tar.zst
 ```

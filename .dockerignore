@@ -52,10 +52,10 @@ docker-compose*.yml
 # Scripts
 scripts/
 
-# Dataset (⚠️ 這是測試要求的)
+# Dataset
 dataset/
-samples/
-research/
+
+# Patch artifacts
 patches/
 
 # Experimental

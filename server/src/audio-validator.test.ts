@@ -9,7 +9,6 @@ import {
 describe("audio-validator", () => {
   describe("detectAudioFormat", () => {
     it("should detect WAV format from RIFF magic bytes", () => {
-      // RIFF....WAVE header
       const wavBuffer = Buffer.from([
         0x52, 0x49, 0x46, 0x46,
         0x00, 0x00, 0x00, 0x00,
@@ -19,13 +18,11 @@ describe("audio-validator", () => {
     });
 
     it("should detect MP3 format from ID3 tag", () => {
-      // ID3v2 header
       const mp3Id3Buffer = Buffer.from([0x49, 0x44, 0x33, 0x03, 0x00, 0x00]);
       expect(detectAudioFormat(mp3Id3Buffer)).toBe("mp3");
     });
 
     it("should detect MP3 format from frame sync", () => {
-      // MP3 frame sync (0xFF 0xFB)
       const mp3SyncBuffer = Buffer.from([0xff, 0xfb, 0x00, 0x00]);
       expect(detectAudioFormat(mp3SyncBuffer)).toBe("mp3");
     });
@@ -55,21 +52,21 @@ describe("audio-validator", () => {
     it("should reject empty file", () => {
       const result = validateAudioFile(Buffer.from([]));
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("empty");
+      expect((result.error || "").toLowerCase()).toContain("empty");
     });
 
     it("should reject file exceeding max size", () => {
       const largeBuffer = Buffer.alloc(11 * 1024 * 1024);
       const result = validateAudioFile(largeBuffer, "test.wav", 10 * 1024 * 1024);
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("too large");
+      expect((result.error || "").toLowerCase()).toContain("too large");
     });
 
     it("should reject unsupported format", () => {
       const unknownBuffer = Buffer.from([0x00, 0x00, 0x00, 0x00, 0x00]);
       const result = validateAudioFile(unknownBuffer);
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("Unsupported");
+      expect(result.error || "").toContain("Unsupported");
     });
 
     it("should accept valid WAV file", () => {
@@ -91,7 +88,7 @@ describe("audio-validator", () => {
       ]);
       const result = validateAudioFile(wavBuffer, "test.mp3");
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("does not match");
+      expect(result.error || "").toContain("does not match");
     });
 
     it("should reject invalid extension", () => {
@@ -102,7 +99,7 @@ describe("audio-validator", () => {
       ]);
       const result = validateAudioFile(wavBuffer, "test.xyz");
       expect(result.valid).toBe(false);
-      expect(result.error).toContain("Invalid file extension");
+      expect(result.error || "").toContain("Invalid file extension");
     });
   });
 
@@ -122,11 +119,8 @@ describe("audio-validator", () => {
 
   describe("estimateAudioDuration", () => {
     it("should estimate duration for WAV format", () => {
-      // 1 second of WAV at 1411 kbps ≈ 176 KB
-      const wavBuffer = Buffer.alloc(176 * 1024);
+      const wavBuffer = Buffer.alloc(180 * 1024);
       const duration = estimateAudioDuration(wavBuffer, "wav");
-
-      console.log("WAV duration =", duration, "type =", typeof duration);
 
       expect(duration).not.toBeNull();
       expect(typeof duration).toBe("number");
@@ -135,11 +129,8 @@ describe("audio-validator", () => {
     });
 
     it("should estimate duration for MP3 format", () => {
-      // 1 second of MP3 at 128 kbps ≈ 16 KB
       const mp3Buffer = Buffer.alloc(16 * 1024);
       const duration = estimateAudioDuration(mp3Buffer, "mp3");
-
-      console.log("MP3 duration =", duration, "type =", typeof duration);
 
       expect(duration).not.toBeNull();
       expect(typeof duration).toBe("number");

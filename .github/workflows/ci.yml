@@ -19,13 +19,13 @@ jobs:
         uses: pnpm/action-setup@v4
         with:
           version: 10.33.0
-          run_install: false
 
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
 
       - name: Verify toolchain
         run: |
@@ -55,6 +55,8 @@ jobs:
 
       - name: Python quality gates
         run: |
-          python -m pytest python_project/tests -q
+          python -m pytest python_project/tests -q --cov=covid_cough_detection --cov-report=term-missing
           python -m compileall python_project/src/covid_cough_detection
 
+      - name: Docker build validation
+        run: docker compose build --no-cache
