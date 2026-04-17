@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { isWavFormat, getTargetMimeType, needsConversion, getConversionStatus } from "./audio-converter.js";
+import { describe, it } from "node:test";
+import assert from "node:assert";
 
 describe("audio-converter", () => {
   describe("isWavFormat", () => {

@@ -1,49 +1,181 @@
 ```
 # Dependencies
 node_modules/
-.python-version
-.venv/
-venv/
-__pycache__/
-*.egg-info/
-dist/
-build/
-target/
+.pnpm-store/
+.npm/
+.yarn/
+.yarn-cache/
 
 # Environment
 .env
 .env.local
 .env.*
 
-# Logs and temporary files
+# Logs
 *.log
+
+# Temporary files
 *.tmp
 *.swp
 *.swo
 
-# Coverage
-coverage/
-htmlcov/
-.coverage
-
-# Editors
-.vscode/
-.idea/
-
-# OS
+# OS generated files
 .DS_Store
 Thumbs.db
 
+# Build outputs
+dist/
+build/
+target/
+out/
+coverage/
+htmlcov/
+.nyc_output/
+
 # Python
+__pycache__/
 *.pyc
 *.pyo
 *.pyd
 .Python
-*.so
+env/
+venv/
+.venv/
+.ENV
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git/modules/
+*.sublime-workspace
+.pytest_cache/
+.mypy_cache/
+.hypothesis/
 
-# TypeScript/JavaScript
-*.tsbuildinfo
+# Node.js
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+node_modules/
+jspm_packages/
+typings/
 .nyc_output
+coverage/
+*.lcov
+.nodemonignore
+
+# TypeScript
+*.tsbuildinfo
+*.min.js
+*.map
+
+# VS Code
+.vscode/
+
+# IntelliJ IDEA
+.idea/
+
+# Eclipse
+.metadata
+bin/
+tmp/
+*.tmp
+*.bak
+*.swp
+*~.nib
+local.properties
+.settings/
+.loadpath
+.recommenders
+
+# Gradle
+.gradle/
+build/
+
+# Go
+*.o
+*.a
+*.so
+*.exe
+*.dll
+*.dylib
+*.test
+*.prof
+vendor/
+
+# Java
+*.class
+*.jar
+*.war
+*.ear
+*.nar
+hs_err_pid*
+
+# C/C++
+*.o
+*.a
+*.so
+*.obj
+*.out
+*.exe
+*.dll
+*.dylib
+*.plist
+*.idb
+*.pdb
+*.gch
+*.ii
+*.s
+*.mod
+*.s~
+*.manifest
+*.exp
+*.ilk
+*.lib
+*.lst
+*.res
+*.pch
+*.pdb
+*.pgc
+*.pgd
+*.bsc
+*.aps
+*.ncb
+*.opt
+*.plg
+*.tlb
+*.tli
+*.tlh
+*.tmp
+*.cache
+*.stackdump
+*.core
+*.[dn]log
+*.VC.db
+*.VC.VC.opendb
+
+# Ruby
+*.gem
+*.rbc
+.bundle/
+config.ru
+Gemfile.lock
+
+# Rust
+target/
+Cargo.lock
+
+# Julia
+julia-*/
+
+# Zig
+zig-*/
 
 # Compression
 *.zip
@@ -68,4 +200,110 @@ Thumbs.db
 *.tar.bz2
 *.tar.xz
 *.tar.zst
+
+# Testing
+coverage/
+.nyc_output/
+istanbul/
+.mochacache/
+
+# Documentation
+docs/_build/
+.sphinx/
+
+# IDE
+*.swp
+*.swo
+*~
+
+# Sensitive
+config/secrets.yml
+config/credentials.yml
+*.key
+*.pem
+*.crt
+*.cert
+*.p12
+*.pfx
+*.p7b
+*.p7c
+*.p7s
+*.spc
+*.sst
+*.csr
+*.der
+*.pko
+*.bak
+*.old
+*.orig
+*.rej
+*.~*
+*#
+*~
+*.tmp
+*.temp
+*.log
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Icon?
+.directory
+.Trashes
+.fseventsd
+.Spotlight-V100
+TemporaryItems
+.CFUserTextEncoding
+apfs.util
+.DiskLabel
+.DiskLabelHelper
+.DiskUtility
+.Safari
+.iChatProfiles
+.iChat
+.AddressBook
+.iCal
+.iTunes
+.iPhoto
+.Aperture
+.Lightroom
+.Preview
+.QuickLook
+.Safari
+.TextEdit
+.Timemachine
+.VoiceMemos
+.WebKit
+.iMovie
+.FinalCut
+.Logic
+.MainStage
+.GarageBand
+.Compressor
+.Premiere
+.AfterEffects
+.Photoshop
+.InDesign
+.Illustrator
+.Fireworks
+.Flash
+.Dreamweaver
+.Contribute
+.Audition
+.Prelude
+.MediaEncoder
+.Anywhere
+.Stock
+.Adobe
+.PremierePro
+.AfterEffects
+.Muse
+.Bridge
+.SpeedGrade
+.CharacterAnimator
+.Fresco
+.Projects
+.Workspaces
 ```
