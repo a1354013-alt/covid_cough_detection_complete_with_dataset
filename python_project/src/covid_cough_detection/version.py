@@ -11,4 +11,3 @@ VERSION_INFO = {
     "version": APP_VERSION,
     "api_version": API_VERSION,
 }
-
