@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { detectAudioFormat, validateAudioFile, getFormatFromFilename, estimateAudioDuration } from "./audio-validator.js";
+import { detectAudioFormat, validateAudioFile, getFormatFromFilename, estimateAudioDuration } from "./audio-validator";
 
 describe("audio-validator", () => {
   describe("detectAudioFormat", () => {
@@ -102,10 +102,11 @@ describe("audio-validator", () => {
   describe("estimateAudioDuration", () => {
     it("should estimate duration for WAV format", () => {
       // 1 second of WAV at 1411 kbps ≈ 176 KB
-      const wavBuffer = Buffer.alloc(176 * 1024);
+      const wavBuffer = Buffer.alloc(200 * 1024);
       const duration = estimateAudioDuration(wavBuffer, "wav");
-      expect(duration).toBeGreaterThan(0.5);
-      expect(duration).toBeLessThan(1.5);
+      expect(duration).not.toBeNull();
+      expect(duration!).toBeGreaterThan(1);
+      expect(duration!).toBeLessThan(1.5);
     });
 
     it("should estimate duration for MP3 format", () => {
