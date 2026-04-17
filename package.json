@@ -18,17 +18,18 @@
     "check:server": "corepack pnpm --filter ./server run check",
     "start": "corepack pnpm --filter ./server run start",
     "lint": "corepack pnpm --filter ./client run lint && corepack pnpm --filter ./server run lint",
-    "test": "corepack pnpm --filter ./client run test && corepack pnpm --filter ./server run test && node --test tests/e2e/integration.test.ts",
-    "test:e2e": "node --test tests/e2e/integration.test.ts",
+    "test": "corepack pnpm --filter ./client run test && corepack pnpm --filter ./server run test && tsx --test tests/e2e/integration.test.ts",
+    "test:e2e": "tsx --test tests/e2e/integration.test.ts",
     "check:version": "node scripts/sync-version.mjs --check && node scripts/check-version-consistency.mjs",
     "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",
     "clean": "corepack pnpm --filter ./client run clean && corepack pnpm --filter ./server run clean"
   },
   "devDependencies": {
-    "@types/node": "^22.15.0",
-    "concurrently": "^8.2.0",
-    "prettier": "^3.0.0"
-  },
+  "@types/node": "^22.15.0",
+  "concurrently": "^8.2.0",
+  "prettier": "^3.0.0",
+  "tsx": "^4.19.2"
+},
   "engines": {
     "node": ">=20.0.0",
     "pnpm": ">=8.0.0"
