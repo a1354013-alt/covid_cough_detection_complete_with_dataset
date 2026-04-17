@@ -145,8 +145,10 @@ export function estimateAudioDuration(buffer: Buffer, format: string): number | 
 
   const bitrate = typicalBitrates[format.toLowerCase()] || 128;
   const duration = ((buffer.length / 1024) * 8) / bitrate;
-  if (duration < 1 || duration > 1800) {
+
+  if (duration < 0.1 || duration > 1800) {
     return null;
   }
+
   return duration;
 }

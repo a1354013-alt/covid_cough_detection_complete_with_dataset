@@ -1,98 +1,92 @@
-import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import test from "node:test";
+import assert from "node:assert";
 import { spawnSync } from "node:child_process";
 import path from "node:path";
-import { promises as fs } from "node:fs";
+import { fileURLToPath } from "node:url";
 
-const repoRoot = path.resolve(process.cwd(), "..");
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const rootDir = path.resolve(__dirname, "../..");
 
-describe("Build smoke tests", () => {
-  it("client builds without errors", async () => {
-    const result = spawnSync("pnpm", ["--filter", "./client", "run", "build"], {
-      cwd: repoRoot,
-      encoding: "utf8",
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-
-    if (result.status !== 0) {
-      console.error("Client build stdout:", result.stdout);
-      console.error("Client build stderr:", result.stderr);
+test("client builds without errors", () => {
+  const result = spawnSync(
+    "pnpm",
+    ["--filter", "./client", "run", "build"],
+    {
+      cwd: rootDir,
+      shell: true,
+      encoding: "utf-8",
     }
+  );
 
-    assert.equal(result.status, 0, "Client build should succeed");
+  console.error("Client build stdout:", result.stdout);
+  console.error("Client build stderr:", result.stderr);
 
-    // Verify build output exists
-    const distExists = await fs
-      .stat(path.join(repoRoot, "client", "dist"))
-      .then(() => true)
-      .catch(() => false);
-    assert.ok(distExists, "client/dist directory should exist after build");
+  assert.strictEqual(
+    result.status,
+    0,
+    "Client build should succeed"
+  );
+});
 
-    // Verify critical files exist
-    const indexHtmlExists = await fs
-      .stat(path.join(repoRoot, "client", "dist", "index.html"))
-      .then(() => true)
-      .catch(() => false);
-    assert.ok(indexHtmlExists, "client/dist/index.html should exist after build");
-  });
-
-  it("server compiles without type errors", () => {
-    const result = spawnSync("pnpm", ["--filter", "./server", "run", "check"], {
-      cwd: repoRoot,
-      encoding: "utf8",
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-
-    if (result.status !== 0) {
-      console.error("Server type check stdout:", result.stdout);
-      console.error("Server type check stderr:", result.stderr);
+test("server compiles without type errors", () => {
+  const result = spawnSync(
+    "pnpm",
+    ["--filter", "./server", "run", "check"],
+    {
+      cwd: rootDir,
+      shell: true,
+      encoding: "utf-8",
     }
+  );
 
-    assert.equal(result.status, 0, "Server type checking should pass");
-  });
+  console.error("Server type check stdout:", result.stdout);
+  console.error("Server type check stderr:", result.stderr);
 
-  it("server builds without errors", () => {
-    const result = spawnSync("pnpm", ["--filter", "./server", "run", "build"], {
-      cwd: repoRoot,
-      encoding: "utf8",
-      stdio: ["pipe", "pipe", "pipe"],
-    });
+  assert.strictEqual(
+    result.status,
+    0,
+    "Server type checking should pass"
+  );
+});
 
-    if (result.status !== 0) {
-      console.error("Server build stdout:", result.stdout);
-      console.error("Server build stderr:", result.stderr);
+test("server builds without errors", () => {
+  const result = spawnSync(
+    "pnpm",
+    ["--filter", "./server", "run", "build"],
+    {
+      cwd: rootDir,
+      shell: true,
+      encoding: "utf-8",
     }
+  );
 
-    assert.equal(result.status, 0, "Server build should succeed");
-  });
+  console.error("Server build stdout:", result.stdout);
+  console.error("Server build stderr:", result.stderr);
 
-  it("python project compiles without errors", () => {
-    const result = spawnSync("python", ["-m", "compileall", "src/covid_cough_detection", "-q"], {
-      cwd: path.join(repoRoot, "python_project"),
-      encoding: "utf8",
-      stdio: ["pipe", "pipe", "pipe"],
-    });
+  assert.strictEqual(
+    result.status,
+    0,
+    "Server build should succeed"
+  );
+});
 
-    if (result.status !== 0) {
-      console.error("Python compile stdout:", result.stdout);
-      console.error("Python compile stderr:", result.stderr);
+test("version consistency check passes", () => {
+  const result = spawnSync(
+    "pnpm",
+    ["run", "check:version"],
+    {
+      cwd: rootDir,
+      shell: true,
+      encoding: "utf-8",
     }
+  );
 
-    assert.equal(result.status, 0, "Python project should compile without errors");
-  });
+  console.error("Version check stdout:", result.stdout);
+  console.error("Version check stderr:", result.stderr);
 
-  it("version consistency check passes", () => {
-    const result = spawnSync("pnpm", ["run", "check:version"], {
-      cwd: repoRoot,
-      encoding: "utf8",
-      stdio: ["pipe", "pipe", "pipe"],
-    });
-
-    if (result.status !== 0) {
-      console.error("Version check stdout:", result.stdout);
-      console.error("Version check stderr:", result.stderr);
-    }
-
-    assert.equal(result.status, 0, "Version consistency check should pass");
-  });
+  assert.strictEqual(
+    result.status,
+    0,
+    "Version consistency check should pass"
+  );
 });

@@ -8,7 +8,7 @@ import type { FileInfo } from "busboy";
 
 import { convertToWav } from "./audio-converter.js";
 import { validateAudioFile } from "./audio-validator.js";
-import { API_VERSION } from "@shared/version.js";
+import { API_VERSION } from "./config/version.js";
 import { logger } from "./logger.js";
 import { RateLimiter } from "./rate-limiter.js";
 
@@ -31,11 +31,6 @@ interface ParseMultipartResult {
   status?: number;
   error?: string;
   details?: string;
-}
-
-interface RateLimitEntry {
-  count: number;
-  resetAt: number;
 }
 
 interface RateLimitResult {
@@ -642,7 +637,13 @@ async function forwardToPythonBackend(
 
   try {
     const formData = new FormData();
-    formData.append("file", new Blob([payloadBuffer], { type: payloadMimeType }), payloadFileName);
+    const payloadBytes = new Uint8Array(payloadBuffer);
+
+    formData.append(
+      "file",
+      new Blob([payloadBytes], { type: payloadMimeType }),
+      payloadFileName
+    );
 
     const response = await fetch(`${PYTHON_API_URL}/predict`, {
       method: "POST",

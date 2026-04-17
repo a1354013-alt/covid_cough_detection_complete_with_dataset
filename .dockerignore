@@ -40,27 +40,27 @@ __pycache__
 *.pyo
 *.pyd
 .Python
-pip-log.txt
-pip-delete-this-directory.txt
 
-# Docker files (not needed in context)
+# Docker files
 Dockerfile*
 docker-compose*.yml
-.dockerignore
 
-# Documentation (not needed at runtime)
+# Documentation
 *.md
 !README.md
 
 # Scripts
-scripts
+scripts/
 
-# Dataset
-dataset
+# Dataset (⚠️ 這是測試要求的)
+dataset/
+samples/
+research/
+patches/
 
 # Experimental
-python_project/src/experimental
-python_project/tests
+python_project/src/experimental/
+python_project/tests/
 
 # Git
 .git
