@@ -1,4 +1,5 @@
 import { API_BASE_URL } from "@/const";
+import { getRuntimeEnv } from "./env";
 
 export interface ApiPredictionResponse {
   label: "positive" | "negative";
@@ -24,11 +25,12 @@ export interface ApiError {
 
 /** Prefer gateway `error` (human summary); append `details` only in dev when distinct. */
 function gatewayErrorUserMessage(parsed: ApiError | null, fallback: string): string {
+  const runtimeEnv = getRuntimeEnv();
   const err = parsed?.error?.trim();
   const det = parsed?.details?.trim();
   if (err) {
-    if (import.meta.env.DEV && det && det !== err) {
-      return `${err} — ${det}`;
+    if (runtimeEnv.dev && det && det !== err) {
+      return `${err} (${det})`;
     }
     return err;
   }
@@ -309,3 +311,4 @@ export function getAudioFileName(mimeType: string): string {
 }
 
 export const apiClient = new ApiClient(API_BASE_URL);
+

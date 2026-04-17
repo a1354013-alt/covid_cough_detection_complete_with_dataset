@@ -5,58 +5,118 @@ on:
   pull_request:
 
 jobs:
-  build-test:
+  js-check:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      # actions/setup-node cache for pnpm expects a pnpm executable to exist
-      # (it queries the pnpm store path). Install pnpm before setup-node runs.
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
         with:
           version: 10.33.0
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
+      - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: pnpm
           cache-dependency-path: pnpm-lock.yaml
+      - run: corepack enable
+      - run: corepack pnpm install --frozen-lockfile
+      - run: corepack pnpm check
 
-      - name: Verify toolchain
-        run: |
-          node -v
-          pnpm -v
+  js-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: corepack enable
+      - run: corepack pnpm install --frozen-lockfile
+      - run: corepack pnpm lint
 
-      - name: Install JS deps
-        run: pnpm install --frozen-lockfile
+  js-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: corepack enable
+      - run: corepack pnpm install --frozen-lockfile
+      - run: corepack pnpm build
 
-      - name: JS quality gates
-        run: |
-          pnpm check
-          pnpm lint
-          pnpm build
-          pnpm test
-          pnpm check:version
+  js-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: corepack enable
+      - run: corepack pnpm install --frozen-lockfile
+      - run: corepack pnpm test
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+  js-version-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: corepack enable
+      - run: corepack pnpm install --frozen-lockfile
+      - run: corepack pnpm check:version
+
+  js-smoke-contract:
+    runs-on: ubuntu-latest
+    needs: [js-build, js-check, js-version-contract]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+      - run: corepack enable
+      - run: corepack pnpm install --frozen-lockfile
+      - run: corepack pnpm test:smoke
+
+  python-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -e "./python_project[dev]"
+      - run: python -m pytest python_project/tests -q --cov=covid_cough_detection --cov-report=term-missing
+      - run: python -m compileall python_project/src/covid_cough_detection
 
-      - name: Install Python deps
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e "./python_project[dev]"
-
-      - name: Python quality gates
-        run: |
-          python -m pytest python_project/tests -q --cov=covid_cough_detection --cov-report=term-missing
-          python -m compileall python_project/src/covid_cough_detection
-
-      - name: Docker build validation
-        run: docker compose build --no-cache
+  docker-build-validation:
+    runs-on: ubuntu-latest
+    needs: [js-test, python-quality]
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose build --no-cache

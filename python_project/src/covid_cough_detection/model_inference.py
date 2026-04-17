@@ -48,7 +48,7 @@ class ModelInference:
     """Model loader/inference facade in strict startup mode."""
 
     def __init__(self, model_path: Optional[str] = None, device: Optional[str] = None):
-        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = self._resolve_device(device)
         self.model: Optional[nn.Module] = None
         self.model_version: Optional[str] = None
         self.is_ready = False
@@ -68,6 +68,18 @@ class ModelInference:
 
         self.load_model(model_path)
         self.is_ready = True
+
+    def _resolve_device(self, requested_device: Optional[str]) -> str:
+        normalized = (requested_device or "auto").strip().lower()
+        if normalized not in {"auto", "cpu", "cuda"}:
+            raise RuntimeError(
+                f"Invalid MODEL_DEVICE '{requested_device}'. Allowed values: auto|cpu|cuda."
+            )
+        if normalized == "auto":
+            return "cuda" if torch.cuda.is_available() else "cpu"
+        if normalized == "cuda" and not torch.cuda.is_available():
+            raise RuntimeError("MODEL_DEVICE is set to 'cuda' but CUDA is not available")
+        return normalized
 
     def load_model(self, model_path: str) -> None:
         try:
@@ -199,4 +211,3 @@ def create_model_inference(
     device: Optional[str] = None,
 ) -> ModelInference:
     return ModelInference(model_path=model_path, device=device)
-

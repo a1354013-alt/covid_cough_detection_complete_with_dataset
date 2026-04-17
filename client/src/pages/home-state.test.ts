@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, expect, it } from "vitest";
 import {
   canAnalyze,
   createInitialHomeFlowState,
@@ -28,7 +27,7 @@ describe("home-flow reducer", () => {
       message: "Model warming up",
     });
 
-    assert.equal(canAnalyze(notReady), false);
+    expect(canAnalyze(notReady)).toBe(false);
   });
 
   it("supports uploading to analyzing to success transition", () => {
@@ -44,14 +43,14 @@ describe("home-flow reducer", () => {
     });
 
     const uploading = homeFlowReducer(recorded, { type: "UPLOAD_STARTED" });
-    assert.equal(uploading.phase, "uploading");
-    assert.equal(isBusy(uploading.phase), true);
+    expect(uploading.phase).toBe("uploading");
+    expect(isBusy(uploading.phase)).toBe(true);
 
     const analyzing = homeFlowReducer(
       homeFlowReducer(uploading, { type: "UPLOAD_PROGRESS", progress: 100 }),
       { type: "ANALYZING_STARTED" }
     );
-    assert.equal(analyzing.phase, "analyzing");
+    expect(analyzing.phase).toBe("analyzing");
 
     const success = homeFlowReducer(analyzing, {
       type: "ANALYSIS_SUCCEEDED",
@@ -66,10 +65,10 @@ describe("home-flow reducer", () => {
       },
     });
 
-    assert.equal(success.phase, "success");
-    assert.equal(success.uploadProgress, 100);
-    assert.equal(success.error, null);
-    assert.equal(success.prediction?.confidenceText, "93%");
+    expect(success.phase).toBe("success");
+    expect(success.uploadProgress).toBe(100);
+    expect(success.error).toBeNull();
+    expect(success.prediction?.confidenceText).toBe("93%");
   });
 
   it("allows reset and retry after error", () => {
@@ -78,17 +77,17 @@ describe("home-flow reducer", () => {
       type: "ANALYSIS_FAILED",
       message: "Model service not ready",
     });
-    assert.equal(withError.phase, "error");
+    expect(withError.phase).toBe("error");
 
     const reset = homeFlowReducer(withError, { type: "RESET_FLOW" });
-    assert.equal(reset.phase, "idle");
-    assert.equal(reset.error, null);
-    assert.equal(reset.recordingData, null);
-    assert.equal(reset.uploadProgress, 0);
+    expect(reset.phase).toBe("idle");
+    expect(reset.error).toBeNull();
+    expect(reset.recordingData).toBeNull();
+    expect(reset.uploadProgress).toBe(0);
 
     const retry = homeFlowReducer(reset, { type: "RECORDING_STARTED" });
-    assert.equal(retry.phase, "recording");
-    assert.equal(retry.error, null);
+    expect(retry.phase).toBe("recording");
+    expect(retry.error).toBeNull();
   });
 
   it("maps positive and negative results to stable semantic colors", () => {
@@ -111,11 +110,11 @@ describe("home-flow reducer", () => {
       processingTimeMs: 120,
     });
 
-    assert.match(positive.title, /Possible Positive Signal/);
-    assert.match(positive.toneTextClass, /text-red/);
-    assert.match(positive.toneBarClass, /bg-red/);
-    assert.match(negative.title, /Possible Negative Signal/);
-    assert.match(negative.toneTextClass, /text-green/);
-    assert.match(negative.toneBarClass, /bg-green/);
+    expect(positive.title).toMatch(/Possible Positive Signal/);
+    expect(positive.toneTextClass).toMatch(/text-red/);
+    expect(positive.toneBarClass).toMatch(/bg-red/);
+    expect(negative.title).toMatch(/Possible Negative Signal/);
+    expect(negative.toneTextClass).toMatch(/text-green/);
+    expect(negative.toneBarClass).toMatch(/bg-green/);
   });
 });

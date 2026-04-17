@@ -1,91 +1,59 @@
 # Testing Guide
 
-This repository uses a critical-path test set focused on delivery risk.
-
-## 1. JavaScript/TypeScript Quality Gates
-
-Run from repository root:
+## Default Test Flow (repo root)
 
 ```bash
 corepack pnpm check
 corepack pnpm lint
 corepack pnpm build
 corepack pnpm test
+corepack pnpm test:smoke
 corepack pnpm check:version
+python -m pytest python_project/tests -q
+python -m compileall python_project/src/covid_cough_detection
 ```
 
-Coverage:
-- `check`: TypeScript type checks (client + server)
-- `lint`: ESLint (client + server)
-- `build`: production builds (client + server)
-- `test`: Node gateway + client state/contract tests
-- `check:version`: validates generated version files and package version consistency
+## Framework Strategy
 
-## 2. Python Gates
+- Client: **Vitest + jsdom** only
+- Server: **node:test** only
+- Python: **pytest**
+
+No mixed framework execution inside the same package-level test entrypoint.
+
+## E2E Strategy
+
+E2E is opt-in and intentionally excluded from default `corepack pnpm test`.
 
 ```bash
-cd python_project
-pip install -e ".[dev]"
-python -m pytest tests -q
-python -m compileall src/covid_cough_detection
+RUN_E2E=1 corepack pnpm test:e2e
 ```
 
-## 3. Current Test Scope
+Required runtime before running E2E:
+- Node gateway reachable at `E2E_NODE_URL` (default `http://localhost:3000`)
+- Python backend reachable at `E2E_PYTHON_URL` (default `http://localhost:8000`)
 
-### Node (`server/src/index.test.ts`)
-- `GET /api/healthz` contract and security headers
-- `GET /api/health` and `GET /api/readyz` readiness semantics
-- `GET /api/version` success and Python-connection-failure degradation
-- `OPTIONS /api/predict` CORS preflight handling
-- `POST /api/predict` success path
-- `POST /api/predict` rejection paths:
-  - non-multipart
-  - oversized file (`413`)
-  - unsupported format
-  - extension/magic mismatch
-  - multi-file upload (`400`)
-  - translated Python `400/413/503/500`
-- rate-limit contract (`429`) with `Retry-After` and rate-limit headers
-- SPA fallback for non-API HTML routes and stable API `404` envelope
+If `RUN_E2E` is not set, `test:e2e` fails fast with explicit instructions.
 
-### Client (`client/src/lib/api.test.ts`, `client/src/pages/home-state.test.ts`)
-- risk-signal wording (`Possible Positive Signal` / `Possible Negative Signal`)
-- diagnostic wording guard (no `COVID-19 Positive/Negative` in display labels)
-- backend-not-ready state disables analyze path
-- uploading → analyzing → success transitions
-- error → reset → retry recovery
-- positive/negative semantic color mapping stability
+## Smoke Contract
 
-### Python (`python_project/tests/*.py`)
-- `/healthz`, `/readyz`, `/version` contract behavior
-- `/predict` success + validation error envelope behavior
-- strict startup fail-fast for missing/invalid model path
-- model version metadata extraction fallback behavior
-- `SimpleConvNet` + standard mel feature map shape smoke (`test_model_mel_shape_contract.py`)
-- audio processor edge cases:
-  - invalid bytes
-  - silence-only
-  - too short
-  - low amplitude
+`corepack pnpm test:smoke` runs build/release contract smoke checks from `server/src/build-smoke.test.ts`.
 
-## 4. Optional Manual Smoke
+This is separate from unit/integration tests to keep `test` focused and avoid duplicated build/check nesting.
 
-With services running:
+## Current Coverage
 
-```bash
-curl -f http://localhost:3000/api/healthz
-curl -f http://localhost:3000/api/readyz
-curl -f http://localhost:3000/api/version
-curl -X POST http://localhost:3000/api/predict -F "audio=@./sample.wav"
-```
-
-## 5. CI Minimum Recommendation
-
-This repo ships a GitHub Actions workflow at `.github/workflows/ci.yml` that fails on non-zero exit from:
-1. `corepack pnpm check`
-2. `corepack pnpm lint`
-3. `corepack pnpm build`
-4. `corepack pnpm test`
-5. `corepack pnpm check:version`
-6. `python -m pytest python_project/tests -q`
-7. `python -m compileall python_project/src/covid_cough_detection`
+- Client:
+  - API formatting contracts
+  - MIME contract validation
+  - Home flow state transitions
+  - Error boundary rendering
+- Server:
+  - API contract, status mapping, CORS/security, rate-limit headers
+  - backend payload validation and gateway mapping
+  - delivery boundary manifest checks
+- Python:
+  - strict startup/model loading contract
+  - API contract shape
+  - audio preprocessing edge cases
+  - mel feature shape inference contract

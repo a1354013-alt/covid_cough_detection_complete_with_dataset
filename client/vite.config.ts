@@ -30,4 +30,10 @@ export default defineConfig({
     sourcemap: true,
     minify: 'terser',
   },
+  test: {
+    environment: "jsdom",
+    globals: true,
+    setupFiles: "./src/test/setup.ts",
+    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+  },
 })

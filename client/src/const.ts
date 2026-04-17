@@ -1,4 +1,4 @@
-/** Synced via root `pnpm run sync:version` (same source as server). */
+/** Synced via root `corepack pnpm run sync:version` (same source as server). */
 export { API_VERSION, APP_VERSION } from "@shared/version";
 
 export const APP_NAME = "COVID-19 Cough Signal Analysis";

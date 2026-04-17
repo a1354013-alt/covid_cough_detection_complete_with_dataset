@@ -1,30 +1,18 @@
 # Deployment Guide
 
-This guide describes the production deployment contract for this repository.
+## Topology
 
-## 1. Deployment Topology
+- Public entrypoint: Node gateway (`3000`)
+- Private backend: Python inference (`8000`)
+- Node serves API + frontend static assets
 
-- Public entrypoint: Node gateway (`PORT`, default `3000`)
-- Node serves:
-  - `/api/*` gateway endpoints
-  - frontend static assets (`client/dist`) with SPA fallback
-- Python inference service runs separately and is reached by Node via `PYTHON_API_URL`
+## Strict Startup Contract (Python)
 
-## 2. Strict Model Startup Contract
-
-Python backend runs in strict startup mode:
 - `MODEL_PATH` is required
-- model file must exist and be loadable
-- if model is missing/invalid, process startup fails (expected)
+- model file must exist and load successfully
+- startup fails fast if model is missing/invalid
 
-This repository does **not** include a production model artifact.
-Provide your own `python_project/models/model.pt`.
-
-## 3. Required Environment Variables
-
-Reference templates:
-- Node gateway: `.env.example`
-- Python backend: `python_project/.env.example`
+## Environment Variables
 
 ### Node
 - `PORT` (default `3000`)
@@ -38,11 +26,10 @@ Reference templates:
 
 ### Python
 - `MODEL_PATH` (**required**)
-- `ALLOWED_ORIGINS` (optional, default `*`)
+- `MODEL_DEVICE` (`auto|cpu|cuda`, default `auto`)
+- `ALLOWED_ORIGINS` (optional)
 
-## 4. Build and Run Locally (Production-like)
-
-From repository root:
+## Local Production-like Run
 
 ```bash
 corepack enable
@@ -51,50 +38,21 @@ corepack pnpm build
 corepack pnpm start
 ```
 
-Notes:
-- `corepack pnpm start` launches Node (`server/dist/index.js`).
-- Node serves frontend only when static build exists (`client/dist` copied into deployment image or available locally).
+## Docker Compose
 
-### pnpm and trusted build scripts
-
-In locked-down environments, `pnpm install` may skip dependency lifecycle scripts (for example `esbuild`). If `vite build` then fails or warns about native helpers, run `pnpm approve-builds` (see [pnpm approve-builds](https://pnpm.io/cli/approve-builds)) or adjust your org’s pnpm `onlyBuiltDependencies` policy.
-
-### Node gateway and ffmpeg
-
-The `Dockerfile.node` image includes **ffmpeg** so the gateway can convert non-WAV uploads to WAV before calling Python, matching local development when ffmpeg is installed. Without ffmpeg, the gateway still forwards the original bytes (best-effort fallback).
-
-## 5. Docker Compose (Recommended)
-
-### 5.1 Prepare model file
-
-Place model artifact at:
+1. Provide model artifact:
 
 ```text
 python_project/models/model.pt
 ```
 
-Compose maps this directory into Python container:
-- host: `./python_project/models`
-- container: `/app/models`
-
-### 5.2 Build and run
+2. Build and run:
 
 ```bash
 docker compose up --build
 ```
 
-Services:
-- Node: [http://localhost:3000](http://localhost:3000)
-- Python: [http://localhost:8000](http://localhost:8000)
-
-Health/readiness:
-- Python container healthcheck: `GET /readyz`
-- Node container healthcheck: `GET /api/healthz`
-- `node-backend` depends on `python-backend` with `condition: service_healthy`
-
-If model is missing, Python service startup/readiness failure is expected and Node will not be marked ready for inference.
-
-## 6. Verification Checklist
+3. Verify endpoints:
 
 ```bash
 curl -f http://localhost:3000/api/healthz
@@ -102,23 +60,20 @@ curl -f http://localhost:3000/api/readyz
 curl -f http://localhost:3000/api/version
 ```
 
-For readiness-gated deployments, `/api/readyz` must be `200` before exposing traffic.
+## CI Responsibility Split
 
-## 7. Security Baseline
+CI jobs are split by single responsibility:
+- JS check
+- JS lint
+- JS build
+- JS test
+- Version contract
+- Smoke contract
+- Python quality
+- Docker build validation
 
-- Production must define explicit `ALLOWED_ORIGINS`.
-- Node emits CSP and security headers.
-- Node gateway enforces request rate limiting for `/api/predict`.
-- Keep reverse-proxy trust (`TRUST_PROXY`) aligned with your ingress setup.
+This avoids duplicated nested checks in one job.
 
-## 8. Release Checklist
+## Release
 
-1. `corepack pnpm check`
-2. `corepack pnpm lint`
-3. `corepack pnpm build`
-4. `corepack pnpm test`
-5. `corepack pnpm check:version`
-6. `python -m pytest python_project/tests -q`
-7. `python -m compileall python_project/src/covid_cough_detection`
-8. Confirm model artifact availability in deployment environment
-9. Confirm `/api/readyz` and `/api/predict` behavior in target runtime
+Use [RELEASE_CHECKLIST.md](./RELEASE_CHECKLIST.md).

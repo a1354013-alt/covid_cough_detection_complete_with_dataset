@@ -15,6 +15,11 @@ def test_model_inference_requires_existing_file(tmp_path):
         ModelInference(model_path=str(missing_path), device="cpu")
 
 
+def test_model_inference_rejects_invalid_device_value():
+    with pytest.raises(RuntimeError, match="Invalid MODEL_DEVICE"):
+        ModelInference(model_path=None, device="tpu")
+
+
 def test_extract_model_version_prefers_checkpoint_metadata():
     inference = ModelInference.__new__(ModelInference)
 

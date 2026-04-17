@@ -39,6 +39,7 @@ pip install -e ".[dev]"
 
 ```bash
 set MODEL_PATH=./models/model.pt
+set MODEL_DEVICE=auto
 # macOS/Linux: export MODEL_PATH=./models/model.pt
 python -m uvicorn covid_cough_detection.app:app --host 0.0.0.0 --port 8000 --reload
 ```
@@ -82,6 +83,7 @@ Error response contract:
 ## Environment Variables
 
 - `MODEL_PATH`: path to trained model file (**required**)
+- `MODEL_DEVICE`: `auto|cpu|cuda` (default `auto`)
 - `ALLOWED_ORIGINS`: comma-separated CORS origins (`*` by default)
 
 ## Validation

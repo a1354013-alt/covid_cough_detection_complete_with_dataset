@@ -1,18 +1,18 @@
 # API Documentation
 
-This document defines the runtime API contract for the current codebase.
+This document defines stable runtime contracts.
 
-## 1. Service Topology
+## Service Topology
 
-- Frontend dev server: `http://localhost:5173`
+- Client dev server: `http://localhost:5173`
 - Node gateway: `http://localhost:3000`
-- Python inference service: `http://localhost:8000`
+- Python inference: `http://localhost:8000`
 
-Client traffic should target Node (`/api/*`).
+Client traffic should go to Node (`/api/*`).
 
-## 2. Stable Error Envelope
+## Stable Error Envelope
 
-Node gateway and Python backend expose a consistent error JSON shape:
+Node and Python expose:
 
 ```json
 {
@@ -21,14 +21,10 @@ Node gateway and Python backend expose a consistent error JSON shape:
 }
 ```
 
-`details` is optional and may be omitted.
+## Node API (`/api/*`)
 
-## 3. Node API (`/api/*`)
-
-### 3.1 `GET /api/healthz`
-Liveness endpoint for Node process.
-
-Success (`200`):
+### `GET /api/healthz`
+`200`:
 
 ```json
 {
@@ -39,10 +35,8 @@ Success (`200`):
 }
 ```
 
-### 3.2 `GET /api/readyz`
-Readiness endpoint for Node + Python + model state.
-
-Ready (`200`):
+### `GET /api/readyz` and `GET /api/health`
+Ready `200`:
 
 ```json
 {
@@ -58,7 +52,7 @@ Ready (`200`):
 }
 ```
 
-Degraded (`503`):
+Degraded `503`:
 
 ```json
 {
@@ -73,60 +67,16 @@ Degraded (`503`):
 }
 ```
 
-### 3.3 `GET /api/health`
-Backward-compatible readiness mirror of `/api/readyz`.
+### `GET /api/version`
+Always `200`, with Python metadata if available.
 
-### 3.4 `GET /api/version`
-Version metadata with graceful degradation when Python backend is degraded.
-
-Success (`200`) example:
-
-```json
-{
-  "api_version": "{{VERSION}}",
-  "node_version": "v22.14.0",
-  "python_backend": {
-    "api_version": "{{VERSION}}",
-    "model_version": "checkpoint-2026.04",
-    "model_ready": true,
-    "device": "cpu",
-    "timestamp": "2026-04-10T00:00:00.000Z"
-  },
-  "timestamp": "2026-04-10T00:00:00.000Z"
-}
-```
-
-Degraded (`200`) example when Python connection fails:
-
-```json
-{
-  "api_version": "{{VERSION}}",
-  "node_version": "v22.14.0",
-  "python_backend": {
-    "status": "degraded",
-    "error": "fetch failed"
-  },
-  "timestamp": "2026-04-10T00:00:00.000Z"
-}
-```
-
-### 3.5 `POST /api/predict`
-Audio inference endpoint.
-
+### `POST /api/predict`
 - Content type: `multipart/form-data`
-- Field name: `audio` (preferred) or `file`
-- Exactly one file is allowed
+- File field: `audio` (preferred) or `file`
 - Max size: `10MB`
-- Node validation accepts WAV, MP3, OGG, WebM
+- Exactly one file
 
-Example:
-
-```bash
-curl -X POST http://localhost:3000/api/predict \
-  -F "audio=@./sample.wav"
-```
-
-Success (`200`):
+Success `200`:
 
 ```json
 {
@@ -137,54 +87,32 @@ Success (`200`):
 }
 ```
 
-Error semantics:
-- `400`: malformed multipart, missing file, multiple files, invalid format, extension/magic mismatch
+Gateway response-code mapping:
+- `400`: bad multipart/input/format mismatch
 - `413`: payload too large
-- `429`: rate limit exceeded (`Retry-After` + rate-limit headers)
+- `429`: rate-limit exceeded
 - `500`: inference backend internal error
-- `502`: Python returned `200` but the prediction JSON failed gateway validation (malformed contract)
-- `503`: model service is degraded (for example model not loaded yet)
+- `502`: invalid backend prediction payload (including `prob` out of `0..1` or negative `processing_time_ms`)
+- `503`: backend degraded/unavailable
 
-Rate-limit headers on `/api/predict` responses:
-- `RateLimit-Limit`
-- `RateLimit-Remaining`
-- `RateLimit-Reset`
-- `Retry-After` (present on `429`)
+## Python API
 
-## 4. Python API
+### `GET /healthz`
+Liveness.
 
-### 4.1 `GET /healthz`
-Liveness endpoint.
+### `GET /readyz` and `GET /health`
+Readiness (returns `503` with degraded shape when model not ready).
 
-### 4.2 `GET /readyz`
-Readiness endpoint. Uses same JSON shape for ready/not-ready, with `503` when not ready.
+### `GET /version`
+Version/model readiness/device metadata.
 
-### 4.3 `GET /health`
-Backward-compatible mirror of `/readyz`.
-
-### 4.4 `GET /version`
-Python-side version + model status.
-
-### 4.5 `POST /predict`
-Direct inference endpoint (usually called by Node).
-
+### `POST /predict`
 - Content type: `multipart/form-data`
-- File field name: `file`
+- File field: `file`
+- Success payload shape matches Node prediction shape.
 
-Success shape matches Node pass-through contract:
+## Operational Notes
 
-```json
-{
-  "label": "positive",
-  "prob": 0.84,
-  "model_version": "checkpoint-2026.04",
-  "processing_time_ms": 123.4
-}
-```
-
-## 5. Operational Notes
-
-- Python backend is strict startup: missing/invalid `MODEL_PATH` causes startup failure.
-- Node keeps compatibility normalization for legacy Python `{"detail": ...}` payloads, but canonical payload is flat `error`/`details`.
-- Frontend should check `/api/readyz` before enabling analysis actions.
-- Project output is risk-signal guidance and not a medical diagnosis.
+- Python startup is strict: missing/invalid `MODEL_PATH` fails startup.
+- Python runtime device is configured by `MODEL_DEVICE=auto|cpu|cuda` (default `auto`).
+- Node normalizes legacy Python `detail` payloads but always returns canonical `error`/`details` to clients.

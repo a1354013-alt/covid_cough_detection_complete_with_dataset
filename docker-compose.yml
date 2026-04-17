@@ -36,6 +36,7 @@ services:
       - PYTHONUNBUFFERED=1
       - LOG_LEVEL=info
       - MODEL_PATH=/app/models/model.pt
+      - MODEL_DEVICE=auto
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/readyz"]

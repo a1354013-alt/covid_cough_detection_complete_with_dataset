@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 audio_processor: Optional[AudioProcessor] = None
 model_inference: Optional[ModelInference] = None
+DEFAULT_MODEL_DEVICE = "auto"
 
 
 class PredictionResponse(BaseModel):
@@ -79,7 +80,8 @@ async def lifespan(_: FastAPI):
     audio_processor = AudioProcessor(sample_rate=16000, duration=10, n_mfcc=13, n_mel=64)
 
     model_path = os.getenv("MODEL_PATH")
-    model_inference = ModelInference(model_path=model_path, device="cpu")
+    model_device = os.getenv("MODEL_DEVICE", DEFAULT_MODEL_DEVICE)
+    model_inference = ModelInference(model_path=model_path, device=model_device)
     logger.info("Model loaded successfully from %s", model_path)
 
     yield
@@ -173,7 +175,7 @@ async def readyz():
             "status": "degraded",
             "model_loaded": False,
             "model_version": None,
-            "device": "cpu",
+            "device": os.getenv("MODEL_DEVICE", DEFAULT_MODEL_DEVICE),
             "error": "Inference service not initialized",
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }

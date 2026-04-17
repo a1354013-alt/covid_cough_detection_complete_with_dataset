@@ -1,5 +1,4 @@
-import { describe, it } from "node:test";
-import assert from "node:assert/strict";
+import { describe, expect, it, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import ErrorBoundary from "./ErrorBoundary";
 
@@ -17,12 +16,11 @@ describe("ErrorBoundary", () => {
         <TestComponent shouldThrow={false} />
       </ErrorBoundary>
     );
-    assert.ok(screen.getByText("Success"));
+    expect(screen.getByText("Success")).toBeTruthy();
   });
 
   it("should render fallback UI when error occurs", () => {
-    const originalConsoleError = console.error;
-    console.error = () => {};
+    const consoleErrorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
 
     render(
       <ErrorBoundary>
@@ -30,8 +28,7 @@ describe("ErrorBoundary", () => {
       </ErrorBoundary>
     );
 
-    assert.ok(screen.getByText(/something went wrong/i));
-    
-    console.error = originalConsoleError;
+    expect(screen.getByText(/something went wrong/i)).toBeTruthy();
+    consoleErrorSpy.mockRestore();
   });
 });

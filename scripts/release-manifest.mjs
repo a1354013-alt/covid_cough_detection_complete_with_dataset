@@ -77,6 +77,7 @@ async function main() {
     "API_DOCUMENTATION.md",
     "DEPLOYMENT_GUIDE.md",
     "TESTING_GUIDE.md",
+    "RELEASE_CHECKLIST.md",
     ".env.example",
   ];
 
@@ -105,4 +106,3 @@ async function main() {
 }
 
 await main();
-

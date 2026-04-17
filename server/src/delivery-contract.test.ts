@@ -134,6 +134,7 @@ describe("delivery contracts", () => {
     const files = JSON.parse(result.stdout) as string[];
     assert.ok(files.includes("shared/version.ts"));
     assert.ok(files.includes("python_project/src/covid_cough_detection/app.py"));
+    assert.ok(files.includes("RELEASE_CHECKLIST.md"));
 
     assert.equal(files.some((p) => p.startsWith("dataset/")), false);
     assert.equal(files.some((p) => p.startsWith("patches/")), false);

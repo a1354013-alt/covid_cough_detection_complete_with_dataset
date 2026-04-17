@@ -17,9 +17,13 @@ const nodeBaseUrl = process.env.E2E_NODE_URL || 'http://localhost:3000';
 const pythonBaseUrl = process.env.E2E_PYTHON_URL || 'http://localhost:8000';
 const shouldRunE2E = process.env.RUN_E2E === '1';
 
-const e2eDescribe = shouldRunE2E ? describe : describe.skip;
+if (!shouldRunE2E) {
+  throw new Error(
+    "E2E tests are intentionally not part of default test flow. Run with RUN_E2E=1 and running services."
+  );
+}
 
-e2eDescribe('E2E Integration Tests', () => {
+describe('E2E Integration Tests', () => {
   before(async () => {
     console.log('E2E tests are enabled (RUN_E2E=1). Expect services to be running:');
     console.log(`  - Node gateway: ${nodeBaseUrl}`);

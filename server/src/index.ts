@@ -97,7 +97,8 @@ const rateLimiter = new RateLimiter(RATE_LIMIT_WINDOW_MS, RATE_LIMIT_MAX_REQUEST
   maxEntries: 10000,
   cleanupIntervalMs: RATE_LIMIT_CLEANUP_INTERVAL_MS,
 });
-rateLimiter.start();
+let signalHandlersRegistered = false;
+let activeServer: Server | null = null;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -179,13 +180,19 @@ function parseValidatedPredictionResponse(payload: unknown): PredictionResponse 
   if (label !== "positive" && label !== "negative") return null;
 
   const prob = record.prob;
-  if (typeof prob !== "number" || !Number.isFinite(prob)) return null;
+  if (typeof prob !== "number" || !Number.isFinite(prob) || prob < 0 || prob > 1) return null;
 
   const modelVersion = record.model_version;
   if (typeof modelVersion !== "string" || modelVersion.length === 0) return null;
 
   const processingTimeMs = record.processing_time_ms;
-  if (typeof processingTimeMs !== "number" || !Number.isFinite(processingTimeMs)) return null;
+  if (
+    typeof processingTimeMs !== "number" ||
+    !Number.isFinite(processingTimeMs) ||
+    processingTimeMs < 0
+  ) {
+    return null;
+  }
 
   return {
     label,
@@ -715,6 +722,27 @@ function logApiRequestLifecycle(req: Request, res: Response, next: NextFunction)
   next();
 }
 
+function registerSignalHandlers(): void {
+  if (signalHandlersRegistered) return;
+
+  const shutdown = (signal: NodeJS.Signals): void => {
+    logger.info(`${signal} received, shutting down HTTP server`);
+    if (!activeServer) {
+      process.exit(0);
+      return;
+    }
+
+    activeServer.close(() => {
+      logger.info("HTTP server closed");
+      process.exit(0);
+    });
+  };
+
+  process.on("SIGINT", () => shutdown("SIGINT"));
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  signalHandlersRegistered = true;
+}
+
 export async function startServer(): Promise<Server> {
   const app = express();
 
@@ -894,21 +922,21 @@ export async function startServer(): Promise<Server> {
   });
 
   const server = createServer(app);
+  activeServer = server;
+  registerSignalHandlers();
+  rateLimiter.start();
 
   server.listen(PORT, "0.0.0.0", () => {
     logger.info("HTTP server started", { port: PORT, trust_proxy: TRUST_PROXY });
   });
 
-  const shutdown = (signal: NodeJS.Signals): void => {
-    logger.info(`${signal} received, shutting down HTTP server`);
-    server.close(() => {
-      logger.info("HTTP server closed");
-      process.exit(0);
-    });
-  };
-
-  process.on("SIGINT", () => shutdown("SIGINT"));
-  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  server.on("close", () => {
+    if (activeServer === server) {
+      activeServer = null;
+    }
+    rateLimiter.stop();
+    rateLimiter.clear();
+  });
 
   return server;
 }

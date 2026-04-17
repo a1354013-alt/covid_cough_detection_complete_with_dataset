@@ -11,7 +11,15 @@ const fakePythonPort = 3810;
 const gatewayBaseUrl = `http://127.0.0.1:${gatewayPort}`;
 const rateLimitMaxRequests = 5;
 
-type PredictMode = "ok" | "400" | "413" | "503" | "500" | "bad_shape_200";
+type PredictMode =
+  | "ok"
+  | "400"
+  | "413"
+  | "503"
+  | "500"
+  | "bad_shape_200"
+  | "bad_prob_range_200"
+  | "bad_processing_time_200";
 type VersionMode = "ok" | "status_503" | "disconnect";
 
 let gatewayServer: Server;
@@ -185,6 +193,22 @@ before(async () => {
               label: "invalid",
               prob: "nan",
               model_version: "x",
+            });
+            return;
+          case "bad_prob_range_200":
+            sendJson(res, 200, {
+              label: "negative",
+              prob: 1.2,
+              model_version: "trained-1.0",
+              processing_time_ms: 10.5,
+            });
+            return;
+          case "bad_processing_time_200":
+            sendJson(res, 200, {
+              label: "negative",
+              prob: 0.85,
+              model_version: "trained-1.0",
+              processing_time_ms: -10.5,
             });
             return;
         }
@@ -440,6 +464,26 @@ describe("node gateway critical paths", () => {
 
   it("returns 502 when python returns 200 with invalid prediction shape", async () => {
     predictMode = "bad_shape_200";
+    const response = await postAudio(createMinimalWavBuffer(), "ok.wav");
+    const body = (await response.json()) as { error: string };
+
+    assert.equal(response.status, 502);
+    assert.ok(body.error.toLowerCase().includes("invalid"));
+    predictMode = "ok";
+  });
+
+  it("returns 502 when python returns out-of-range probability", async () => {
+    predictMode = "bad_prob_range_200";
+    const response = await postAudio(createMinimalWavBuffer(), "ok.wav");
+    const body = (await response.json()) as { error: string };
+
+    assert.equal(response.status, 502);
+    assert.ok(body.error.toLowerCase().includes("invalid"));
+    predictMode = "ok";
+  });
+
+  it("returns 502 when python returns negative processing time", async () => {
+    predictMode = "bad_processing_time_200";
     const response = await postAudio(createMinimalWavBuffer(), "ok.wav");
     const body = (await response.json()) as { error: string };
 

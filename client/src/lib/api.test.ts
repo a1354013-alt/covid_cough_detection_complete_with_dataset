@@ -1,5 +1,4 @@
-import assert from "node:assert/strict";
-import { describe, it } from "node:test";
+import { describe, expect, it } from "vitest";
 import { formatPrediction } from "./api";
 
 describe("formatPrediction", () => {
@@ -11,13 +10,13 @@ describe("formatPrediction", () => {
       processing_time_ms: 123.4,
     });
 
-    assert.equal(result.rawLabel, "positive");
-    assert.equal(result.confidenceText, "83%");
-    assert.equal(result.displayLabel, "Possible Positive Signal");
-    assert.ok(!result.displayLabel.includes("COVID-19 Positive"));
-    assert.equal(result.modelVersion, "trained-1.0");
-    assert.equal(result.processingTimeMs, 123.4);
-    assert.ok(result.timestamp instanceof Date);
+    expect(result.rawLabel).toBe("positive");
+    expect(result.confidenceText).toBe("83%");
+    expect(result.displayLabel).toBe("Possible Positive Signal");
+    expect(result.displayLabel.includes("COVID-19 Positive")).toBe(false);
+    expect(result.modelVersion).toBe("trained-1.0");
+    expect(result.processingTimeMs).toBe(123.4);
+    expect(result.timestamp instanceof Date).toBe(true);
   });
 
   it("uses signal wording for negative predictions", () => {
@@ -28,8 +27,8 @@ describe("formatPrediction", () => {
       processing_time_ms: 98.1,
     });
 
-    assert.equal(result.rawLabel, "negative");
-    assert.equal(result.displayLabel, "Possible Negative Signal");
-    assert.ok(!result.displayLabel.includes("COVID-19 Negative"));
+    expect(result.rawLabel).toBe("negative");
+    expect(result.displayLabel).toBe("Possible Negative Signal");
+    expect(result.displayLabel.includes("COVID-19 Negative")).toBe(false);
   });
 });

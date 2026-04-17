@@ -7,10 +7,10 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "../..");
 
-test("client builds without errors", () => {
+test("delivery smoke: client build contract", () => {
   const result = spawnSync(
-    "pnpm",
-    ["--filter", "./client", "run", "build"],
+    "corepack",
+    ["pnpm", "--filter", "./client", "run", "build"],
     {
       cwd: rootDir,
       shell: true,
@@ -21,17 +21,13 @@ test("client builds without errors", () => {
   console.error("Client build stdout:", result.stdout);
   console.error("Client build stderr:", result.stderr);
 
-  assert.strictEqual(
-    result.status,
-    0,
-    "Client build should succeed"
-  );
+  assert.strictEqual(result.status, 0, "Build smoke failed: client build contract broke");
 });
 
-test("server compiles without type errors", () => {
+test("delivery smoke: server check contract", () => {
   const result = spawnSync(
-    "pnpm",
-    ["--filter", "./server", "run", "check"],
+    "corepack",
+    ["pnpm", "--filter", "./server", "run", "check"],
     {
       cwd: rootDir,
       shell: true,
@@ -42,17 +38,13 @@ test("server compiles without type errors", () => {
   console.error("Server type check stdout:", result.stdout);
   console.error("Server type check stderr:", result.stderr);
 
-  assert.strictEqual(
-    result.status,
-    0,
-    "Server type checking should pass"
-  );
+  assert.strictEqual(result.status, 0, "Build smoke failed: server check contract broke");
 });
 
-test("server builds without errors", () => {
+test("delivery smoke: server build contract", () => {
   const result = spawnSync(
-    "pnpm",
-    ["--filter", "./server", "run", "build"],
+    "corepack",
+    ["pnpm", "--filter", "./server", "run", "build"],
     {
       cwd: rootDir,
       shell: true,
@@ -63,17 +55,13 @@ test("server builds without errors", () => {
   console.error("Server build stdout:", result.stdout);
   console.error("Server build stderr:", result.stderr);
 
-  assert.strictEqual(
-    result.status,
-    0,
-    "Server build should succeed"
-  );
+  assert.strictEqual(result.status, 0, "Build smoke failed: server build contract broke");
 });
 
-test("version consistency check passes", () => {
+test("delivery smoke: version sync contract", () => {
   const result = spawnSync(
-    "pnpm",
-    ["run", "check:version"],
+    "corepack",
+    ["pnpm", "run", "check:version"],
     {
       cwd: rootDir,
       shell: true,
@@ -84,9 +72,5 @@ test("version consistency check passes", () => {
   console.error("Version check stdout:", result.stdout);
   console.error("Version check stderr:", result.stderr);
 
-  assert.strictEqual(
-    result.status,
-    0,
-    "Version consistency check should pass"
-  );
+  assert.strictEqual(result.status, 0, "Build smoke failed: version consistency contract broke");
 });

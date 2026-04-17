@@ -7,7 +7,7 @@ Supports multiple audio formats and feature extraction methods.
 
 import io
 import logging
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Literal
 
 import numpy as np
 import librosa
@@ -32,11 +32,13 @@ class AudioProcessor:
         duration: int = DURATION,
         n_mfcc: int = N_MFCC,
         n_mel: int = N_MEL,
+        feature_strategy: Literal["mel_spectrogram", "mel_and_mfcc"] = "mel_spectrogram",
     ):
         self.sample_rate = sample_rate
         self.duration = duration
         self.n_mfcc = n_mfcc
         self.n_mel = n_mel
+        self.feature_strategy = feature_strategy
 
     def load_audio(self, audio_data: bytes, original_sr: Optional[int] = None) -> np.ndarray:
         """
@@ -125,10 +127,12 @@ class AudioProcessor:
         return mel_spec_db
 
     def extract_features(self, y: np.ndarray) -> Dict[str, np.ndarray]:
-        return {
-            "mfcc": self.extract_mfcc(y),
-            "mel_spectrogram": self.extract_mel_spectrogram(y),
-        }
+        if self.feature_strategy == "mel_and_mfcc":
+            return {
+                "mfcc": self.extract_mfcc(y),
+                "mel_spectrogram": self.extract_mel_spectrogram(y),
+            }
+        return {"mel_spectrogram": self.extract_mel_spectrogram(y)}
 
     def process_audio_file(self, audio_data: bytes) -> Dict[str, Any]:
         y = self.load_audio(audio_data)
@@ -140,9 +144,9 @@ class AudioProcessor:
             "features": features,
             "sample_rate": self.sample_rate,
             "duration": self.duration,
+            "feature_strategy": self.feature_strategy,
         }
 
 
 def create_audio_processor(**kwargs) -> AudioProcessor:
     return AudioProcessor(**kwargs)
-

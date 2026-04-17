@@ -18,8 +18,9 @@
     "check:server": "corepack pnpm --filter ./server run check",
     "start": "corepack pnpm --filter ./server run start",
     "lint": "corepack pnpm --filter ./client run lint && corepack pnpm --filter ./server run lint",
-    "test": "corepack pnpm --filter ./client run test && corepack pnpm --filter ./server run test && tsx --test tests/e2e/integration.test.ts",
+    "test": "corepack pnpm --filter ./client run test && corepack pnpm --filter ./server run test",
     "test:e2e": "tsx --test tests/e2e/integration.test.ts",
+    "test:smoke": "corepack pnpm --filter ./server run test:smoke",
     "check:version": "node scripts/sync-version.mjs --check && node scripts/check-version-consistency.mjs",
     "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",
     "clean": "corepack pnpm --filter ./client run clean && corepack pnpm --filter ./server run clean"
