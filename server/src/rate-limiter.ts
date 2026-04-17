@@ -3,6 +3,8 @@
  * Uses LRU-style eviction when max entries is reached.
  */
 
+import { logger } from "./logger.js";
+
 interface RateLimitEntry {
   count: number;
   resetAt: number;
@@ -107,7 +109,7 @@ export class RateLimiter {
     }
 
     if (expiredKeys.length > 0 && process.env.NODE_ENV !== 'production') {
-      console.debug(`[RateLimiter] Cleaned ${expiredKeys.length} expired entries`);
+      logger.debug("RateLimiter cleaned expired entries", { count: expiredKeys.length });
     }
   }
 
@@ -125,7 +127,7 @@ export class RateLimiter {
     if (oldestKey) {
       this.map.delete(oldestKey);
       if (process.env.NODE_ENV !== 'production') {
-        console.debug(`[RateLimiter] Evicted oldest entry: ${oldestKey}`);
+        logger.debug("RateLimiter evicted oldest entry", { key: oldestKey });
       }
     }
   }

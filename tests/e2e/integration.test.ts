@@ -12,29 +12,25 @@
 
 import { describe, it, before, after } from 'node:test';
 import { strict as assert } from 'node:assert';
-import { spawn, type ChildProcess } from 'node:child_process';
-import { setTimeout } from 'node:timers/promises';
 
-describe('E2E Integration Tests', () => {
-  let nodeProcess: ChildProcess | null = null;
-  let pythonProcess: ChildProcess | null = null;
+const nodeBaseUrl = process.env.E2E_NODE_URL || 'http://localhost:3000';
+const pythonBaseUrl = process.env.E2E_PYTHON_URL || 'http://localhost:8000';
+const shouldRunE2E = process.env.RUN_E2E === '1';
 
+const e2eDescribe = shouldRunE2E ? describe : describe.skip;
+
+e2eDescribe('E2E Integration Tests', () => {
   before(async () => {
-    // Note: In CI, these services would be started by docker-compose
-    // For local testing, ensure services are running on default ports
-    console.log('E2E tests expect services to be running:');
-    console.log('  - Node gateway: http://localhost:3000');
-    console.log('  - Python backend: http://localhost:8000');
+    console.log('E2E tests are enabled (RUN_E2E=1). Expect services to be running:');
+    console.log(`  - Node gateway: ${nodeBaseUrl}`);
+    console.log(`  - Python backend: ${pythonBaseUrl}`);
   });
 
-  after(() => {
-    if (nodeProcess) nodeProcess.kill();
-    if (pythonProcess) pythonProcess.kill();
-  });
+  after(() => {});
 
   describe('Health Endpoints', () => {
     it('Node gateway /api/healthz should return liveness', async () => {
-      const response = await fetch('http://localhost:3000/api/healthz');
+      const response = await fetch(`${nodeBaseUrl}/api/healthz`);
       assert.strictEqual(response.status, 200);
       const data = await response.json();
       assert.strictEqual(data.status, 'alive');
@@ -42,14 +38,14 @@ describe('E2E Integration Tests', () => {
     });
 
     it('Node gateway /api/readyz should return readiness', async () => {
-      const response = await fetch('http://localhost:3000/api/readyz');
+      const response = await fetch(`${nodeBaseUrl}/api/readyz`);
       assert.strictEqual(response.status, 200);
       const data = await response.json();
       assert.ok('isReady' in data || 'status' in data);
     });
 
     it('Python backend /healthz should return liveness', async () => {
-      const response = await fetch('http://localhost:8000/healthz');
+      const response = await fetch(`${pythonBaseUrl}/healthz`);
       assert.strictEqual(response.status, 200);
       const data = await response.json();
       assert.strictEqual(data.status, 'alive');
@@ -57,7 +53,7 @@ describe('E2E Integration Tests', () => {
     });
 
     it('Python backend /readyz should return readiness', async () => {
-      const response = await fetch('http://localhost:8000/readyz');
+      const response = await fetch(`${pythonBaseUrl}/readyz`);
       assert.strictEqual(response.status, 200);
       const data = await response.json();
       assert.ok(data.model_loaded !== undefined);
@@ -67,8 +63,8 @@ describe('E2E Integration Tests', () => {
   describe('Version Consistency', () => {
     it('Node and Python should report same API version', async () => {
       const [nodeRes, pythonRes] = await Promise.all([
-        fetch('http://localhost:3000/api/version'),
-        fetch('http://localhost:8000/version'),
+        fetch(`${nodeBaseUrl}/api/version`),
+        fetch(`${pythonBaseUrl}/version`),
       ]);
 
       assert.strictEqual(nodeRes.status, 200);
@@ -92,7 +88,7 @@ describe('E2E Integration Tests', () => {
 
   describe('Error Handling', () => {
     it('Node should return consistent error format for invalid requests', async () => {
-      const response = await fetch('http://localhost:3000/api/predict', {
+      const response = await fetch(`${nodeBaseUrl}/api/predict`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
@@ -104,7 +100,7 @@ describe('E2E Integration Tests', () => {
     });
 
     it('Python should return consistent error format for invalid requests', async () => {
-      const response = await fetch('http://localhost:8000/predict', {
+      const response = await fetch(`${pythonBaseUrl}/predict`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
@@ -118,7 +114,7 @@ describe('E2E Integration Tests', () => {
 
   describe('CORS Headers', () => {
     it('Node gateway should include CORS headers', async () => {
-      const response = await fetch('http://localhost:3000/api/healthz', {
+      const response = await fetch(`${nodeBaseUrl}/api/healthz`, {
         headers: { 'Origin': 'http://localhost:5173' },
       });
 
@@ -127,7 +123,7 @@ describe('E2E Integration Tests', () => {
     });
 
     it('Python backend should include CORS headers', async () => {
-      const response = await fetch('http://localhost:8000/healthz', {
+      const response = await fetch(`${pythonBaseUrl}/healthz`, {
         headers: { 'Origin': 'http://localhost:3000' },
       });
 

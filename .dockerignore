@@ -56,10 +56,13 @@ docker-compose*.yml
 scripts
 
 # Dataset
-dataset
+dataset/
+
+# Patch artifacts
+patches/
 
 # Experimental
-python_project/src/experimental
+python_project/src/experimental/
 python_project/tests
 
 # Git

@@ -33,11 +33,6 @@ interface ParseMultipartResult {
   details?: string;
 }
 
-interface RateLimitEntry {
-  count: number;
-  resetAt: number;
-}
-
 interface RateLimitResult {
   allowed: boolean;
   remaining: number;
@@ -642,7 +637,11 @@ async function forwardToPythonBackend(
 
   try {
     const formData = new FormData();
-    formData.append("file", new Blob([payloadBuffer], { type: payloadMimeType }), payloadFileName);
+    formData.append(
+      "file",
+      new Blob([new Uint8Array(payloadBuffer)], { type: payloadMimeType }),
+      payloadFileName
+    );
 
     const response = await fetch(`${PYTHON_API_URL}/predict`, {
       method: "POST",
