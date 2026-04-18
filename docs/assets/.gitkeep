@@ -1,0 +1,22 @@
+# Documentation Assets
+
+This directory is reserved for documentation assets such as:
+- Architecture diagrams
+- Screenshots
+- Demo GIFs
+- Flow charts
+
+## Placeholder Files
+
+When adding demo assets, use descriptive names like:
+- `architecture-diagram.png`
+- `home-page-screenshot.png`
+- `prediction-flow.gif`
+- `health-dashboard.png`
+
+## Referencing in README
+
+Assets can be referenced in markdown files using relative paths:
+```markdown
+![Architecture Diagram](./docs/assets/architecture-diagram.png)
+```
