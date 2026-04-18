@@ -83,9 +83,12 @@ Success `200`:
   "label": "positive",
   "prob": 0.84,
   "model_version": "checkpoint-2026.04",
-  "processing_time_ms": 123.4
+  "processing_time_ms": 123.4,
+  "request_id": "req_abc123_xyz789"
 }
 ```
+
+The `request_id` field enables request tracing and can be used to look up the inference in the history endpoint.
 
 Gateway response-code mapping:
 - `400`: bad multipart/input/format mismatch
@@ -94,6 +97,56 @@ Gateway response-code mapping:
 - `500`: inference backend internal error
 - `502`: invalid backend prediction payload (including `prob` out of `0..1` or negative `processing_time_ms`)
 - `503`: backend degraded/unavailable
+
+### `GET /api/history` (Portfolio Feature)
+Returns recent inference history for demonstration purposes.
+
+Query parameters:
+- `limit` (optional): Number of records to return (default: 10, max: 50)
+
+Success `200`:
+
+```json
+{
+  "count": 3,
+  "records": [
+    {
+      "requestId": "req_abc123_xyz789",
+      "timestamp": "2026-04-10T00:00:00.000Z",
+      "filename": "cough_sample.wav",
+      "label": "positive",
+      "confidence": 0.84,
+      "processingTimeMs": 123,
+      "clientIp": "127.0.0.1"
+    }
+  ]
+}
+```
+
+### `GET /api/status` (Portfolio Feature)
+Returns system status dashboard data including aggregate metrics.
+
+Success `200`:
+
+```json
+{
+  "status": "operational",
+  "timestamp": "2026-04-10T00:00:00.000Z",
+  "uptime_ms": 3600000,
+  "metrics": {
+    "totalRequests": 42,
+    "avgLatencyMs": 156,
+    "positiveCount": 18,
+    "negativeCount": 24,
+    "positivityRate": 43
+  },
+  "rateLimit": {
+    "windowMs": 60000,
+    "maxRequests": 30
+  },
+  "version": "1.0.13"
+}
+```
 
 ## Python API
 

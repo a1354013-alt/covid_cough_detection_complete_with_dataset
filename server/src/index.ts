@@ -11,12 +11,14 @@ import { validateAudioFile } from "./audio-validator.js";
 import { API_VERSION } from "./config/version.js";
 import { logger } from "./logger.js";
 import { RateLimiter } from "./rate-limiter.js";
+import { inferenceHistory, type InferenceStats } from "./inference-history.js";
 
 interface PredictionResponse {
   label: "positive" | "negative";
   prob: number;
   model_version: string;
   processing_time_ms: number;
+  request_id?: string; // Added for request tracing
 }
 
 interface ErrorResponse {
@@ -753,10 +755,54 @@ export async function startServer(): Promise<Server> {
   app.use(logApiRequestLifecycle);
 
   app.get("/api/healthz", (_req: Request, res: Response) => {
+    const stats = inferenceHistory.getStats();
     res.json({
       status: "alive",
       timestamp: new Date().toISOString(),
       service: "covid-cough-detection-api",
+      version: API_VERSION,
+      metrics: {
+        totalRequests: stats.totalRequests,
+        avgLatencyMs: stats.avgLatencyMs,
+        positiveCount: stats.positiveCount,
+        negativeCount: stats.negativeCount,
+      },
+    });
+  });
+
+  // New endpoint: Get recent inference history (portfolio feature)
+  app.get("/api/history", (_req: Request, res: Response) => {
+    const limit = Math.min(
+      Math.max(1, Number.parseInt(String(req.query.limit), 10) || 10),
+      50
+    );
+    const records = inferenceHistory.getRecent(limit);
+    res.json({
+      count: records.length,
+      records,
+    });
+  });
+
+  // New endpoint: System status dashboard data (portfolio feature)
+  app.get("/api/status", (_req: Request, res: Response) => {
+    const stats = inferenceHistory.getStats();
+    res.json({
+      status: "operational",
+      timestamp: new Date().toISOString(),
+      uptime_ms: process.uptime() * 1000,
+      metrics: {
+        totalRequests: stats.totalRequests,
+        avgLatencyMs: stats.avgLatencyMs,
+        positiveCount: stats.positiveCount,
+        negativeCount: stats.negativeCount,
+        positivityRate: stats.totalRequests > 0 
+          ? Math.round((stats.positiveCount / stats.totalRequests) * 100) 
+          : 0,
+      },
+      rateLimit: {
+        windowMs: RATE_LIMIT_WINDOW_MS,
+        maxRequests: RATE_LIMIT_MAX_REQUESTS,
+      },
       version: API_VERSION,
     });
   });
@@ -838,13 +884,31 @@ export async function startServer(): Promise<Server> {
       return;
     }
 
+    const processingTimeMs = Date.now() - startTime;
+
+    // Record inference history for portfolio demonstration
+    const recorded = inferenceHistory.add({
+      timestamp: new Date(),
+      filename: parseResult.filename || "unknown",
+      label: forwarded.prediction.label,
+      confidence: forwarded.prediction.prob,
+      processingTimeMs,
+      clientIp: getRateLimitKey(req),
+    });
+
     logger.logPredictionResult(
       forwarded.prediction.label,
       forwarded.prediction.prob,
-      Date.now() - startTime
+      processingTimeMs
     );
 
-    res.json(forwarded.prediction);
+    // Return prediction with request ID for tracing
+    const responsePayload: PredictionResponse = {
+      ...forwarded.prediction,
+      request_id: recorded.requestId,
+    };
+
+    res.json(responsePayload);
   });
 
   app.get("/api/version", async (_req: Request, res: Response) => {

@@ -1,61 +1,56 @@
-```
+```ts
 # Dependencies
-.python_version
-.venv/
-venv/
+node_modules/
+
+# Build outputs
+dist/
+build/
+target/
+
+# Python related
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 .Python
 env/
-env.bak/
-venv.bak/
-
-# Build artifacts
-build/
-dist/
-*.egg
-*.egg-info/
-.installed.cfg
-*.egg-info/
-
-# Testing
-.coverage
-coverage/
-htmlcov/
-.noserc
-.tox/
-.pytest_cache/
-.hypothesis/
+venv/
+.venv/
+.ENV
+.python-version
 
 # Logs
 *.log
-
-# OS generated files
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
 
 # Environment variables
 .env
 .env.local
 .env.*
-!.env.example
 
-# IDE specific
+# IDE files
 .vscode/
 .idea/
 *.swp
 *.swo
-*~
-.DS_Store
-*.tmp
 
-# Documentation
-docs/_build/
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Coverage reports
+coverage/
+htmlcov/
+.coverage
+
+# TypeScript/JavaScript build artifacts
+*.js.map
+*.ts.map
+
+# Test coverage
+.nyc_output/
+coverage/
+
+# Temporary files
+*.tmp
+*.temp
 ```

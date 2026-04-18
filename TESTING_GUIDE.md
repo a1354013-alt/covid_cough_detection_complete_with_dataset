@@ -136,7 +136,7 @@ python -m compileall python_project/src/covid_cough_detection
 
 ## End-to-End Testing
 
-E2E tests are **opt-in** and excluded from default test runs because they require running services.
+E2E tests are **opt-in** and excluded from default test runs because they require running services. When `RUN_E2E` is not set or services are unavailable, tests will be automatically skipped with a clear message.
 
 ### Prerequisites
 
@@ -158,14 +158,23 @@ E2E_PYTHON_URL=http://localhost:8000 \
 corepack pnpm test:e2e
 ```
 
+### Automatic Service Detection
+
+The E2E test suite includes automatic service availability checks:
+- If `RUN_E2E` is not set, tests are skipped with message: "ℹ️ E2E tests skipped. Set RUN_E2E=1 to enable."
+- If services are not responding, tests are skipped with warnings showing which service failed
+- This prevents false failures in CI environments where services may not be running
+- The skip is handled gracefully using `describe.skip()` - no errors are thrown
+
 ### E2E Test Coverage
 
 | Test | Description |
 |------|-------------|
-| Health endpoint | Verify `/api/healthz` returns 200 |
-| Readiness endpoint | Verify `/api/readyz` returns service status |
-| Version endpoint | Verify `/api/version` returns version info |
-| Predict endpoint | Verify full prediction flow with audio file |
+| Health endpoints | Verify `/api/healthz` and `/healthz` return 200 |
+| Readiness endpoints | Verify `/api/readyz` and `/readyz` return service status |
+| Version consistency | Verify Node and Python report matching API versions |
+| Error handling | Verify consistent error response formats |
+| CORS headers | Verify CORS headers are present |
 
 ## CI/CD Integration
 

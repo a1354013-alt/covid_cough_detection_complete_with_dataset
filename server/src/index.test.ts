@@ -265,12 +265,54 @@ describe("node gateway critical paths", () => {
     });
     assert.equal(response.status, 200);
 
-    const body = (await response.json()) as { status: string };
+    const body = (await response.json()) as { 
+      status: string; 
+      metrics?: { positiveCount?: number; negativeCount?: number };
+    };
     assert.equal(body.status, "alive");
+    // New metrics fields from inference history integration
+    assert.ok('metrics' in body, "Should have metrics object");
     assert.equal(response.headers.get("access-control-allow-origin"), "http://allowed.example");
     assert.ok((response.headers.get("vary") || "").includes("Origin"));
     assert.equal(response.headers.get("x-content-type-options"), "nosniff");
     assert.ok((response.headers.get("content-security-policy") || "").includes("script-src 'self'"));
+  });
+
+  it("GET /api/history returns recent inference records", async () => {
+    const response = await fetch(`${gatewayBaseUrl}/api/history`);
+    assert.equal(response.status, 200);
+
+    const body = (await response.json()) as { 
+      count: number; 
+      records: Array<{ requestId: string; label: string }>;
+    };
+    assert.ok('count' in body, "Should have count field");
+    assert.ok('records' in body, "Should have records field");
+    assert.ok(Array.isArray(body.records), "Records should be an array");
+  });
+
+  it("GET /api/history respects limit parameter", async () => {
+    const response = await fetch(`${gatewayBaseUrl}/api/history?limit=5`);
+    assert.equal(response.status, 200);
+
+    const body = (await response.json()) as { count: number; records: unknown[] };
+    assert.ok(body.count <= 5, "Should respect limit parameter");
+  });
+
+  it("GET /api/status returns system dashboard data", async () => {
+    const response = await fetch(`${gatewayBaseUrl}/api/status`);
+    assert.equal(response.status, 200);
+
+    const body = (await response.json()) as { 
+      status: string;
+      uptime_ms?: number;
+      metrics?: { totalRequests?: number; positivityRate?: number };
+      rateLimit?: { windowMs: number; maxRequests: number };
+    };
+    assert.equal(body.status, "operational");
+    assert.ok('uptime_ms' in body, "Should have uptime_ms");
+    assert.ok('metrics' in body, "Should have metrics");
+    assert.ok('rateLimit' in body, "Should have rateLimit config");
   });
 
   it("GET /api/health mirrors readiness when model is ready", async () => {
