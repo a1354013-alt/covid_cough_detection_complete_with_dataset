@@ -1,29 +1,34 @@
 ```
 # Dependencies
 node_modules/
+.pnpm-store/
 
-# Compiled JavaScript
-*.js.map
-*.min.js
-*.d.ts
+# Build outputs
+dist/
+build/
+target/
 
 # Logs
 *.log
 
-# Environment variables
+# Environment
 .env
 .env.local
 *.env.*
 
-# IDE files
+# Editor
 .vscode/
 .idea/
 *.swp
 *.swo
 
-# Build outputs
-dist/
-build/
-coverage/
-.nyc_output/
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+.venv/
+.env
 ```
