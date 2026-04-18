@@ -5,13 +5,16 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Busboy from "busboy";
 import type { FileInfo } from "busboy";
+import { createHash } from "node:crypto";
 
 import { convertToWav } from "./audio-converter.js";
 import { validateAudioFile } from "./audio-validator.js";
 import { API_VERSION } from "./config/version.js";
 import { logger } from "./logger.js";
 import { RateLimiter } from "./rate-limiter.js";
-import { inferenceHistory, type InferenceStats } from "./inference-history.js";
+import { inferenceHistory, type InferenceStats as MemoryInferenceStats } from "./inference-history.js";
+import { inferenceDatabase, type InferenceStats as DbInferenceStats, type DailyStats } from "./inference-database.js";
+import { optionalApiKeyAuth, getApiKeyStats } from "./api-key-auth.js";
 
 interface PredictionResponse {
   label: "positive" | "negative";
@@ -72,6 +75,8 @@ const MAX_FILE_SIZE = 10 * 1024 * 1024;
 const RATE_LIMIT_WINDOW_MS = 60_000;
 const RATE_LIMIT_MAX_REQUESTS = Math.max(1, parseInteger(process.env.RATE_LIMIT_MAX_REQUESTS, 30));
 const RATE_LIMIT_CLEANUP_INTERVAL_MS = 5 * 60_000;
+const CACHE_TTL_SECONDS = parseInteger(process.env.CACHE_TTL_SECONDS, 3600);
+const ENABLE_DATABASE = process.env.ENABLE_DATABASE !== "false";
 
 const TRUST_PROXY = parseTrustProxy(process.env.TRUST_PROXY, isDev);
 const ALLOWED_ORIGINS = parseAllowedOrigins(process.env.ALLOWED_ORIGINS);
@@ -746,6 +751,11 @@ function registerSignalHandlers(): void {
 }
 
 export async function startServer(): Promise<Server> {
+  // Initialize database if enabled
+  if (ENABLE_DATABASE) {
+    await inferenceDatabase.initialize();
+  }
+
   const app = express();
 
   app.set("trust proxy", TRUST_PROXY);
@@ -753,9 +763,11 @@ export async function startServer(): Promise<Server> {
   app.use(express.urlencoded({ extended: true }));
   app.use(applySecurityHeaders);
   app.use(logApiRequestLifecycle);
+  // Optional API key authentication (validates if provided, doesn't require)
+  app.use(optionalApiKeyAuth);
 
   app.get("/api/healthz", (_req: Request, res: Response) => {
-    const stats = inferenceHistory.getStats();
+    const stats = ENABLE_DATABASE ? inferenceDatabase.getStats() : inferenceHistory.getStats();
     res.json({
       status: "alive",
       timestamp: new Date().toISOString(),
@@ -766,7 +778,15 @@ export async function startServer(): Promise<Server> {
         avgLatencyMs: stats.avgLatencyMs,
         positiveCount: stats.positiveCount,
         negativeCount: stats.negativeCount,
+        p95LatencyMs: (stats as DbInferenceStats).p95LatencyMs || 0,
+        p99LatencyMs: (stats as DbInferenceStats).p99LatencyMs || 0,
+        errorRate: (stats as DbInferenceStats).errorRate || 0,
       },
+      database: {
+        enabled: ENABLE_DATABASE,
+        ready: ENABLE_DATABASE ? inferenceDatabase.isReady() : false,
+      },
+      authentication: getApiKeyStats(),
     });
   });
 
@@ -774,18 +794,46 @@ export async function startServer(): Promise<Server> {
   app.get("/api/history", (_req: Request, res: Response) => {
     const limit = Math.min(
       Math.max(1, Number.parseInt(String(req.query.limit), 10) || 10),
-      50
+      100
     );
-    const records = inferenceHistory.getRecent(limit);
+    const offset = Math.max(0, Number.parseInt(String(req.query.offset), 10) || 0);
+    
+    const records = ENABLE_DATABASE 
+      ? inferenceDatabase.getRecent(limit, offset)
+      : inferenceHistory.getRecent(limit);
+    
     res.json({
       count: records.length,
+      total: ENABLE_DATABASE ? inferenceDatabase.getStats().totalRequests : inferenceHistory.getStats().totalRequests,
       records,
+    });
+  });
+
+  // New endpoint: Daily statistics for charts
+  app.get("/api/stats/daily", (_req: Request, res: Response) => {
+    const days = Math.min(
+      Math.max(1, Number.parseInt(String(req.query.days), 10) || 7),
+      90
+    );
+    
+    if (!ENABLE_DATABASE) {
+      res.status(503).json({
+        error: "Database not enabled",
+        details: "Daily statistics require database persistence. Set ENABLE_DATABASE=true",
+      });
+      return;
+    }
+    
+    const dailyStats = inferenceDatabase.getDailyStats(days);
+    res.json({
+      days,
+      data: dailyStats,
     });
   });
 
   // New endpoint: System status dashboard data (portfolio feature)
   app.get("/api/status", (_req: Request, res: Response) => {
-    const stats = inferenceHistory.getStats();
+    const stats = ENABLE_DATABASE ? inferenceDatabase.getStats() : inferenceHistory.getStats();
     res.json({
       status: "operational",
       timestamp: new Date().toISOString(),
@@ -793,17 +841,61 @@ export async function startServer(): Promise<Server> {
       metrics: {
         totalRequests: stats.totalRequests,
         avgLatencyMs: stats.avgLatencyMs,
+        p95LatencyMs: (stats as DbInferenceStats).p95LatencyMs || 0,
+        p99LatencyMs: (stats as DbInferenceStats).p99LatencyMs || 0,
         positiveCount: stats.positiveCount,
         negativeCount: stats.negativeCount,
         positivityRate: stats.totalRequests > 0 
           ? Math.round((stats.positiveCount / stats.totalRequests) * 100) 
           : 0,
+        errorRate: (stats as DbInferenceStats).errorRate || 0,
+        requestsLast24h: (stats as DbInferenceStats).requestsLast24h || 0,
+        positivityRateLast24h: (stats as DbInferenceStats).positivityRateLast24h || 0,
       },
+      cache: ENABLE_DATABASE ? inferenceDatabase.getCacheStats() : { hits: 0, misses: 0, hitRate: 0 },
       rateLimit: {
         windowMs: RATE_LIMIT_WINDOW_MS,
         maxRequests: RATE_LIMIT_MAX_REQUESTS,
       },
+      database: {
+        enabled: ENABLE_DATABASE,
+        ready: ENABLE_DATABASE ? inferenceDatabase.isReady() : false,
+      },
+      authentication: getApiKeyStats(),
       version: API_VERSION,
+    });
+  });
+
+  // Admin endpoint: View recent errors (requires API key with admin permission)
+  app.get("/api/admin/errors", (_req: Request, res: Response) => {
+    const authenticatedReq = _req as typeof _req & { apiKeyPermissions?: string[] };
+    const permissions = authenticatedReq.apiKeyPermissions || [];
+    
+    if (!permissions.includes('admin')) {
+      res.status(403).json({
+        error: "Admin access required",
+        details: "This endpoint requires an API key with admin permissions",
+      });
+      return;
+    }
+    
+    const limit = Math.min(
+      Math.max(1, Number.parseInt(String(req.query.limit), 10) || 20),
+      100
+    );
+    
+    if (!ENABLE_DATABASE) {
+      res.status(503).json({
+        error: "Database not enabled",
+        details: "Error logs require database persistence",
+      });
+      return;
+    }
+    
+    const errors = inferenceDatabase.getRecentErrors(limit);
+    res.json({
+      count: errors.length,
+      errors,
     });
   });
 
@@ -866,6 +958,36 @@ export async function startServer(): Promise<Server> {
       return;
     }
 
+    // Compute audio hash for caching
+    const audioHash = createHash('sha256').update(parseResult.file).digest('hex');
+    
+    // Check cache first (if database is enabled)
+    if (ENABLE_DATABASE) {
+      const cached = inferenceDatabase.getCachedPrediction(audioHash);
+      if (cached) {
+        logger.info('Cache hit', { audioHash: audioHash.substring(0, 16) + '...' });
+        
+        // Record cache hit in history
+        const recorded = inferenceDatabase.add({
+          requestId: InferenceHistoryStore.generateRequestId(),
+          timestamp: new Date().toISOString(),
+          filename: parseResult.filename || "unknown",
+          label: cached.label,
+          confidence: cached.confidence,
+          processingTimeMs: cached.processingTimeMs,
+          clientIp: getRateLimitKey(req),
+          audioHash,
+        });
+        
+        res.json({
+          ...cached,
+          request_id: recorded.requestId,
+          cached: true,
+        });
+        return;
+      }
+    }
+
     logger.logPrediction(
       parseResult.filename || "unknown",
       parseResult.file.length,
@@ -880,21 +1002,54 @@ export async function startServer(): Promise<Server> {
 
     if (!forwarded.ok) {
       const mapped = mapBackendFailureToGatewayResponse(forwarded);
+      
+      // Log error to database
+      if (ENABLE_DATABASE) {
+        inferenceDatabase.logError('PREDICTION_FAILED', mapped.error, {
+          endpoint: '/api/predict',
+          clientIp: getRateLimitKey(req),
+          stackTrace: mapped.details,
+        });
+      }
+      
       sendError(res, mapped.status, mapped.error, mapped.details);
       return;
     }
 
     const processingTimeMs = Date.now() - startTime;
 
-    // Record inference history for portfolio demonstration
-    const recorded = inferenceHistory.add({
-      timestamp: new Date(),
-      filename: parseResult.filename || "unknown",
-      label: forwarded.prediction.label,
-      confidence: forwarded.prediction.prob,
-      processingTimeMs,
-      clientIp: getRateLimitKey(req),
-    });
+    // Record inference history and cache result (if database enabled)
+    let recorded;
+    if (ENABLE_DATABASE) {
+      recorded = inferenceDatabase.add({
+        requestId: InferenceHistoryStore.generateRequestId(),
+        timestamp: new Date().toISOString(),
+        filename: parseResult.filename || "unknown",
+        label: forwarded.prediction.label,
+        confidence: forwarded.prediction.prob,
+        processingTimeMs,
+        clientIp: getRateLimitKey(req),
+        audioHash,
+      });
+      
+      // Cache the prediction result
+      inferenceDatabase.setCachedPrediction(audioHash, {
+        label: forwarded.prediction.label,
+        confidence: forwarded.prediction.prob,
+        processingTimeMs,
+        modelVersion: forwarded.prediction.model_version,
+      }, CACHE_TTL_SECONDS);
+    } else {
+      // Fallback to in-memory store
+      recorded = inferenceHistory.add({
+        timestamp: new Date(),
+        filename: parseResult.filename || "unknown",
+        label: forwarded.prediction.label,
+        confidence: forwarded.prediction.prob,
+        processingTimeMs,
+        clientIp: getRateLimitKey(req),
+      });
+    }
 
     logger.logPredictionResult(
       forwarded.prediction.label,
@@ -990,6 +1145,17 @@ export async function startServer(): Promise<Server> {
   registerSignalHandlers();
   rateLimiter.start();
 
+  // Start cache cleanup interval if database is enabled
+  let cacheCleanupInterval: ReturnType<typeof setInterval> | null = null;
+  if (ENABLE_DATABASE) {
+    cacheCleanupInterval = setInterval(() => {
+      const deleted = inferenceDatabase.cleanupExpiredCache();
+      if (deleted > 0) {
+        logger.debug('Cleaned up expired cache entries', { count: deleted });
+      }
+    }, 5 * 60_000); // Every 5 minutes
+  }
+
   server.listen(PORT, "0.0.0.0", () => {
     logger.info("HTTP server started", { port: PORT, trust_proxy: TRUST_PROXY });
   });
@@ -1000,9 +1166,27 @@ export async function startServer(): Promise<Server> {
     }
     rateLimiter.stop();
     rateLimiter.clear();
+    
+    // Clear cache cleanup interval
+    if (cacheCleanupInterval) {
+      clearInterval(cacheCleanupInterval);
+      cacheCleanupInterval = null;
+    }
   });
 
   return server;
+}
+
+// Graceful shutdown handler for database
+async function gracefulShutdown(): Promise<void> {
+  logger.info('Starting graceful shutdown...');
+  
+  // Close database connection
+  if (ENABLE_DATABASE) {
+    await inferenceDatabase.close();
+  }
+  
+  process.exit(0);
 }
 
 if (process.env.SKIP_SERVER_START !== "true") {
@@ -1011,3 +1195,7 @@ if (process.env.SKIP_SERVER_START !== "true") {
     process.exit(1);
   });
 }
+
+// Handle graceful shutdown signals
+process.on('SIGINT', gracefulShutdown);
+process.on('SIGTERM', gracefulShutdown);

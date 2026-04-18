@@ -1,23 +1,11 @@
-```ts
+```
 # Dependencies
 node_modules/
 
-# Build outputs
-dist/
-build/
-target/
-
-# Python related
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.Python
-env/
-venv/
-.venv/
-.ENV
-.python-version
+# Compiled JavaScript
+*.js.map
+*.min.js
+*.d.ts
 
 # Logs
 *.log
@@ -25,7 +13,7 @@ venv/
 # Environment variables
 .env
 .env.local
-.env.*
+*.env.*
 
 # IDE files
 .vscode/
@@ -33,24 +21,9 @@ venv/
 *.swp
 *.swo
 
-# OS generated files
-.DS_Store
-Thumbs.db
-
-# Coverage reports
+# Build outputs
+dist/
+build/
 coverage/
-htmlcov/
-.coverage
-
-# TypeScript/JavaScript build artifacts
-*.js.map
-*.ts.map
-
-# Test coverage
 .nyc_output/
-coverage/
-
-# Temporary files
-*.tmp
-*.temp
 ```
