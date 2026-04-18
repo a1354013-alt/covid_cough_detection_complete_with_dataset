@@ -1,135 +1,155 @@
-# 專案改進總結
+# Project Changes Summary
 
-本次修改解決了 12 個關鍵問題，使專案達到可交付狀態。
+This document summarizes the major changes made during the final repository consolidation for portfolio delivery.
 
-## ✅ 已完成的修改
+## Repository Hygiene & Delivery Boundary
 
-### 1. 版本一致性風險 (Critical)
-**問題**: `shared/version.ts` 和 `server/src/config/version.ts` 重複
-**解決方案**: 
-- 刪除 `server/src/config/version.ts`
-- 更新 `server/src/index.ts` 從 `@shared/version.js` 導入 API_VERSION
-- 統一為單一來源
+### `.gitignore` Cleanup
+**Before:** Contained markdown code fence artifacts, overly broad compression rules
+**After:** Clean, focused rules for dependencies, build outputs, environment files, and large dataset files
 
-### 2. TypeScript 配置不一致 (Critical)
-**問題**: server 使用 `moduleResolution: "node"`，client 使用 `"bundler"`
-**解決方案**:
-- 更新 `server/tsconfig.json` 為 `"moduleResolution": "bundler"`
-- 移除 `client/tsconfig.json` 中不必要的 `"rootDir": ".."`
+**Changes:**
+- Removed markdown code fence (```) artifacts
+- Consolidated compression rules to essential archive formats
+- Added explicit dataset exclusion patterns (`dataset/*.pt`, `dataset/raw/`, etc.)
+- Added cache and temp directory exclusions
 
-### 3. 前端 CSS 變數未定義 (Critical)
-**問題**: `index.css` 使用 `var(--color-blue-700)` 但未定義
-**解決方案**:
-- 在 `@theme inline` 中添加完整的 blue color scale (--color-blue-50 到 --color-blue-900)
+### `.dockerignore` Alignment
+**Before:** Inconsistent with release boundaries, included experimental code paths
+**After:** Aligned with `.gitignore`, excludes experimental and test content
 
-### 4. sonner.tsx 主題檢測競爭條件 (Critical)
-**問題**: Toaster 組件在渲染時檢測 theme，DOM 可能尚未載入
-**解決方案**:
-- 使用 `useState` + `useEffect` 確保 DOM 載入後才檢測主題
+**Changes:**
+- Removed `python_project/src/experimental/` from Docker images
+- Removed `python_project/tests/` from runtime images
+- Added explicit `patches/` exclusion
+- Ensured consistency across root and `python_project/.dockerignore`
 
-### 5. MIME 類型定義冗餘 (Medium)
-**問題**: `SUPPORTED_BACKEND_MIME_PREFIXES` 與 `SUPPORTED_AUDIO_FORMATS` 重疊
-**解決方案**:
-- 移除 `SUPPORTED_BACKEND_MIME_PREFIXES`
-- 簡化為單一來源 `SUPPORTED_AUDIO_FORMATS`
+## Python Structure Consolidation
 
-### 6. 速率限制記憶體洩漏風險 (Medium)
-**問題**: `rateLimitMap` 無上限，高流量下可能記憶體增長
-**解決方案**:
-- 新建 `server/src/rate-limiter.ts` RateLimiter 類別
-- 實現 LRU-style eviction (maxEntries: 10000)
-- 添加 `rate-limiter.test.ts` 完整測試
+### Experimental Code Removal
+**Before:** Duplicate experimental directories at both `python_project/experimental/` and `python_project/src/experimental/`
+**After:** Both experimental directories removed
 
-### 7. 測試覆蓋率缺口 (Medium)
-**問題**: 缺少 audio-validator、audio-converter、ErrorBoundary 測試
-**解決方案**:
-- 新增 `server/src/audio-validator.test.ts` (14 個測試用例)
-- 新增 `server/src/audio-converter.test.ts` (10 個測試用例)
-- 新增 `client/src/components/ErrorBoundary.test.tsx` (2 個測試用例)
-- 新增 `server/src/rate-limiter.test.ts` (7 個測試用例)
+**Rationale:**
+- Experimental code should not be in production release boundary
+- Prevents reviewer confusion about which code is active
+- Clear separation between production runtime and research prototypes
 
-### 8. Python 專案結構混亂 (Low)
-**問題**: 頂層模組與子目錄重複
-**解決方案**:
-- 刪除 `python_project/src/app.py`
-- 刪除 `python_project/src/audio_processor.py`
-- 刪除 `python_project/src/model_inference.py`
-- 刪除 `python_project/src/version.py`
-- 統一使用 `covid_cough_detection/` 子目錄
+## Documentation Overhaul
 
-### 9. 文檔過時風險 (Low)
-**問題**: API_DOCUMENTATION.md 硬編碼版本號 "1.0.13"
-**解決方案**:
-- 替換為 `"{{VERSION}}"` 佔位符
+### New Files Created
 
-### 10. Docker 構建優化 (Low)
-**問題**: 缺少 .dockerignore，可能複製不必要文件
-**解決方案**:
-- 新增 `.dockerignore` 排除 node_modules, dist, 測試文件等
+1. **MODEL_CARD.md** - Model documentation with:
+   - Intended use and limitations
+   - Training data description
+   - Performance metrics placeholders
+   - Ethical considerations
+   - Medical disclaimer
 
-## 📊 修改統計
+2. **SYSTEM_ARCHITECTURE.md** - Architecture documentation with:
+   - System topology diagrams
+   - Component details (Client, Gateway, Inference)
+   - API endpoint reference
+   - Environment variable documentation
+   - Deployment topology options
+   - Testing strategy overview
+   - Release boundary definition
 
-| 類別 | 數量 |
-|------|------|
-| 修改的文件 | 10 |
-| 新增的文件 | 6 |
-| 刪除的文件 | 6 |
-| 新增測試用例 | 33+ |
-| 總測試文件數 | 10 |
+3. **docs/assets/.gitkeep** - Placeholder for documentation assets
 
-## 🔧 技術細節
+### Updated Files
 
-### TypeScript 配置統一
-```json
-// server/tsconfig.json
-"moduleResolution": "bundler"  // 從 "node" 改為 "bundler"
+1. **README.md** - Complete rewrite as GitHub showcase page:
+   - Project value proposition
+   - Technology stack table
+   - Quick start guide
+   - API endpoint reference
+   - Quality gates documentation
+   - Testing strategy summary
+   - Project structure diagram
+   - Security features list
+   - Future enhancements roadmap
 
-// client/tsconfig.json  
-移除 "rootDir": ".."  // 避免路徑解析問題
-```
+2. **DEPLOYMENT_GUIDE.md** - Production deployment guide:
+   - Environment variable reference
+   - Local development setup
+   - Docker Compose deployment steps
+   - Production hardening checklist
+   - HTTPS termination example (Nginx)
+   - Resource allocation recommendations
+   - Troubleshooting section
 
-### CSS 變數定義
-```css
-@theme inline {
-  --color-blue-50: oklch(0.97 0.01 250);
-  --color-blue-100: oklch(0.93 0.02 250);
-  --color-blue-200: oklch(0.88 0.04 250);
-  --color-blue-300: oklch(0.80 0.06 250);
-  --color-blue-400: oklch(0.70 0.10 250);
-  --color-blue-500: oklch(0.62 0.16 250);
-  --color-blue-600: oklch(0.55 0.20 250);
-  --color-blue-700: oklch(0.48 0.22 250);
-  --color-blue-800: oklch(0.42 0.20 250);
-  --color-blue-900: oklch(0.35 0.16 250);
-}
-```
+3. **TESTING_GUIDE.md** - Comprehensive testing documentation:
+   - Test framework strategy by layer
+   - Commands for all test types
+   - Coverage goals
+   - CI/CD integration details
+   - Troubleshooting common issues
 
-### RateLimiter 類別特性
-- 最大条目數限制 (預設 10000)
-- LRU-style 淘汰最舊條目
-- 定期清理過期條目
-- 完整的單元測試覆蓋
+## Version Management
 
-## ✅ 驗證清單
+### Source of Truth
+- Root `package.json` version is the single source of truth
+- `scripts/sync-version.mjs` synchronizes all version files
+- Generated files clearly marked with auto-generated notice
 
-- [x] 版本文件統一為单一來源
-- [x] TypeScript moduleResolution 一致
-- [x] CSS 變數明確定義
-- [x] 主題檢測無競爭條件
-- [x] MIME 類型定義簡化
-- [x] 速率限制有記憶體上限
-- [x] 關鍵模組測試覆蓋
-- [x] Python 專案結構清理
-- [x] 文檔版本號動態化
-- [x] Docker 構建優化
+### Sync Targets
+- `shared/version.ts` (generated)
+- `server/src/config/version.ts` (generated)
+- `python_project/src/covid_cough_detection/version.py` (generated)
+- `client/package.json` (synced)
+- `server/package.json` (synced)
+- `python_project/pyproject.toml` (synced)
 
-## 📝 後續建議
+## API Contract Consistency
 
-1. **監控**: 在生產環境監控 RateLimiter 的 evict 頻率
-2. **性能測試**: 進行負載測試驗證速率限制效果
-3. **文檔**: 更新 README 說明新的架構決策
-4. **CI/CD**: 在 CI 流程中加入版本一致性檢查
+### Verified Contracts
+- Health endpoints (`/healthz`, `/readyz`, `/health`)
+- Version endpoint (`/version`)
+- Prediction endpoint (`/predict`)
+- Error envelope format (`{ error, details? }`)
+
+### Type Safety
+- Client TypeScript interfaces match server responses
+- Python Pydantic models enforce request/response shapes
+- Gateway validates Python backend payloads before forwarding
+
+## Testing Coverage
+
+### Test Files Present
+| Layer | Test Files | Framework |
+|-------|-----------|-----------|
+| Client | 4 | Vitest + jsdom |
+| Server | 6 | node:test |
+| Python | 4 | pytest |
+| E2E | 1 | Custom (fetch) |
+
+### Coverage Areas
+- API contract validation
+- Error handling
+- Rate limiting
+- Audio validation/conversion
+- State management
+- Component rendering
+- Model startup contract
+- Feature extraction shapes
+
+## Remaining Work / Known Gaps
+
+### Technical Debt
+1. **Model artifact**: Requires actual trained model at `python_project/models/model.pt`
+2. **Performance metrics**: MODEL_CARD.md has TBD values requiring real evaluation
+3. **Demo assets**: `docs/assets/` is empty, needs screenshots/diagrams
+
+### Enhancement Opportunities (Not Required)
+1. Batch analysis API endpoint
+2. Inference history tracking
+3. Real-time streaming support
+4. Enhanced monitoring dashboard
+5. Audio quality feedback to users
 
 ---
-修改日期：2024
-修改者：AI Assistant
+
+**Consolidation Date:** 2024
+**Version:** 1.0.13
+**Status:** Ready for portfolio review

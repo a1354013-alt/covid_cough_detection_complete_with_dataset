@@ -13,10 +13,8 @@ env/
 models/
 data/
 
-# Tests and research code are not part of the runtime image
+# Tests are not part of the runtime image
 tests/
-src/experimental/
-experimental/
 
 # Editor / OS
 .vscode/
@@ -26,4 +24,3 @@ experimental/
 *~
 .DS_Store
 Thumbs.db
-

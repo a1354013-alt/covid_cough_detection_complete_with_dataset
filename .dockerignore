@@ -1,12 +1,12 @@
 # Dependencies
-node_modules
-**/node_modules
+node_modules/
+**/node_modules/
 
 # Build outputs
-dist
-build
-**/dist
-**/build
+dist/
+build/
+**/dist/
+**/build/
 
 # Development files
 *.log
@@ -17,8 +17,8 @@ build
 .env.*.local
 
 # IDE
-.vscode
-.idea
+.vscode/
+.idea/
 *.swp
 *.swo
 *~
@@ -28,40 +28,43 @@ build
 Thumbs.db
 
 # Test coverage
-coverage
-**/coverage
+coverage/
+**/coverage/
 
 # TypeScript build info
 *.tsbuildinfo
 
 # Python specific
-__pycache__
+__pycache__/
 *.pyc
 *.pyo
 *.pyd
 .Python
+*.egg-info/
+.venv/
+venv/
 
-# Docker files
+# Docker files (not needed in image)
 Dockerfile*
 docker-compose*.yml
 
-# Documentation
+# Scripts (not part of runtime)
+scripts/
+
+# Dataset (large files, not for release)
+dataset/
+
+# Documentation source (README.md is included)
 *.md
 !README.md
 
-# Scripts
-scripts/
-
-# Dataset
-dataset/
-
-# Patch artifacts
-patches/
-
-# Experimental
-python_project/src/experimental/
-python_project/tests/
-
 # Git
-.git
+.git/
 .gitignore
+
+# Experimental code (not for production)
+python_project/src/experimental/
+
+# Patches and temporary files
+patches/
+*.patch
