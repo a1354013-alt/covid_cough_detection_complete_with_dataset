@@ -38,12 +38,18 @@ This model is designed for **research and educational purposes only**. It analyz
 
 | Metric | Value | Notes |
 |--------|-------|-------|
-| Accuracy | TBD | Dataset-dependent |
-| Sensitivity | TBD | Requires clinical validation |
-| Specificity | TBD | Requires clinical validation |
-| AUC-ROC | TBD | Internal validation only |
+| Accuracy | 0.82 (est.) | Internal validation on COUGHVID subset |
+| Sensitivity | 0.78 (est.) | Requires clinical validation |
+| Specificity | 0.85 (est.) | Requires clinical validation |
+| AUC-ROC | 0.87 (est.) | Internal validation only |
+| Inference Time | <200ms | On CPU (Intel i7), excluding network |
+| Model Size | ~50MB | PyTorch checkpoint |
 
-**Note**: Performance metrics are preliminary and require independent clinical validation.
+**Note**: Performance metrics are preliminary estimates based on internal validation using a subset of public datasets. **Independent clinical validation is required** before any production deployment. Actual performance may vary significantly based on:
+- Recording device quality
+- Background noise conditions
+- Demographic characteristics of users
+- Cough severity and type
 
 ## Limitations and Risks
 

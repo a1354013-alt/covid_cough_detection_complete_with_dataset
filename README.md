@@ -1,6 +1,6 @@
 # COVID-19 Cough Signal Analysis Platform
 
-[![CI](https://github.com/your-org/covid-cough-detection/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/covid-cough-detection/actions/workflows/ci.yml)
+[![CI](https://github.com/covid-cough-detection/covid-cough-detection/actions/workflows/ci.yml/badge.svg)](https://github.com/covid-cough-detection/covid-cough-detection/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A production-oriented monorepo implementing an AI-powered cough audio analysis platform. This project demonstrates enterprise-grade engineering practices for ML inference systems, including strict API contracts, comprehensive testing, rate limiting, and containerized deployment.
@@ -50,7 +50,7 @@ This platform showcases:
 
 ```bash
 # Clone repository
-git clone https://github.com/your-org/covid-cough-detection.git
+git clone https://github.com/covid-cough-detection/covid-cough-detection.git
 cd covid-cough-detection
 
 # Enable Corepack and install dependencies
