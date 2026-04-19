@@ -12,8 +12,8 @@ import { validateAudioFile } from "./audio-validator.js";
 import { API_VERSION } from "./config/version.js";
 import { logger } from "./logger.js";
 import { RateLimiter } from "./rate-limiter.js";
-import { inferenceHistory, type InferenceStats as MemoryInferenceStats } from "./inference-history.js";
-import { inferenceDatabase, type InferenceStats as DbInferenceStats, type DailyStats } from "./inference-database.js";
+import { inferenceHistory } from "./inference-history.js";
+import { inferenceDatabase, type InferenceStats as DbInferenceStats } from "./inference-database.js";
 import { optionalApiKeyAuth, getApiKeyStats } from "./api-key-auth.js";
 
 interface PredictionResponse {
