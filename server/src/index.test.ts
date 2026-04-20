@@ -40,6 +40,21 @@ function sendJson(res: ServerResponse, status: number, body: Record<string, unkn
   res.end(JSON.stringify(body));
 }
 
+type ErrorEnvelope = {
+  success: false;
+  error: string;
+  request_id: string;
+  details?: string;
+};
+
+function assertErrorEnvelope(body: unknown): asserts body is ErrorEnvelope {
+  assert.ok(body && typeof body === "object");
+  const record = body as Record<string, unknown>;
+  assert.equal(record.success, false);
+  assert.ok(typeof record.error === "string" && record.error.length > 0);
+  assert.ok(typeof record.request_id === "string" && record.request_id.length > 0);
+}
+
 function nextIp(): string {
   ipCounter += 1;
   return `198.51.100.${ipCounter}`;
@@ -410,14 +425,16 @@ describe("node gateway critical paths", () => {
   it("POST /api/predict rejects non-multipart payload", async () => {
     const response = await postInvalidPredict();
     assert.equal(response.status, 400);
-    const body = (await response.json()) as { error: string };
+    const body = (await response.json()) as ErrorEnvelope;
+    assertErrorEnvelope(body);
     assert.equal(body.error, "Content-Type must be multipart/form-data");
   });
 
   it("POST /api/predict rejects oversized upload with 413", async () => {
     const oversized = Buffer.alloc(10 * 1024 * 1024 + 1, 0x41);
     const response = await postAudio(oversized, "huge.wav");
-    const body = (await response.json()) as { error: string };
+    const body = (await response.json()) as ErrorEnvelope;
+    assertErrorEnvelope(body);
 
     assert.equal(response.status, 413);
     assert.ok(body.error.toLowerCase().includes("too large"));
@@ -425,7 +442,8 @@ describe("node gateway critical paths", () => {
 
   it("POST /api/predict rejects unsupported format", async () => {
     const response = await postAudio(Buffer.from([0x00, 0x01, 0x02]), "invalid.wav");
-    const body = (await response.json()) as { error: string };
+    const body = (await response.json()) as ErrorEnvelope;
+    assertErrorEnvelope(body);
 
     assert.equal(response.status, 400);
     assert.ok(body.error.includes("Unsupported audio format"));
@@ -433,7 +451,8 @@ describe("node gateway critical paths", () => {
 
   it("POST /api/predict rejects extension and magic-bytes mismatch", async () => {
     const response = await postAudio(createMp3MagicBuffer(), "mismatch.wav");
-    const body = (await response.json()) as { error: string };
+    const body = (await response.json()) as ErrorEnvelope;
+    assertErrorEnvelope(body);
 
     assert.equal(response.status, 400);
     assert.ok(body.error.includes("does not match detected format"));
@@ -460,7 +479,8 @@ describe("node gateway critical paths", () => {
       },
     });
 
-    const body = (await response.json()) as { error: string; details?: string };
+    const body = (await response.json()) as ErrorEnvelope;
+    assertErrorEnvelope(body);
     assert.equal(response.status, 400);
     assert.equal(body.error, "Only one audio file is allowed");
     assert.ok((body.details || "").includes("Upload exactly one file"));
@@ -469,7 +489,8 @@ describe("node gateway critical paths", () => {
   it("translates python 400 with clear validation detail", async () => {
     predictMode = "400";
     const response = await postAudio(createMinimalWavBuffer(), "ok.wav");
-    const body = (await response.json()) as { error: string; details?: string };
+    const body = (await response.json()) as ErrorEnvelope;
+    assertErrorEnvelope(body);
 
     assert.equal(response.status, 400);
     assert.equal(body.error, "Invalid audio payload");
@@ -479,7 +500,8 @@ describe("node gateway critical paths", () => {
   it("translates python 413 as payload-too-large", async () => {
     predictMode = "413";
     const response = await postAudio(createMinimalWavBuffer(), "ok.wav");
-    const body = (await response.json()) as { error: string };
+    const body = (await response.json()) as ErrorEnvelope;
+    assertErrorEnvelope(body);
 
     assert.equal(response.status, 413);
     assert.ok(body.error.includes("File too large"));
@@ -488,7 +510,8 @@ describe("node gateway critical paths", () => {
   it("translates python 503 as model-not-ready", async () => {
     predictMode = "503";
     const response = await postAudio(createMinimalWavBuffer(), "ok.wav");
-    const body = (await response.json()) as { error: string };
+    const body = (await response.json()) as ErrorEnvelope;
+    assertErrorEnvelope(body);
 
     assert.equal(response.status, 503);
     assert.ok(body.error.includes("Model not ready"));
@@ -497,7 +520,8 @@ describe("node gateway critical paths", () => {
   it("translates python 500 as internal backend error", async () => {
     predictMode = "500";
     const response = await postAudio(createMinimalWavBuffer(), "ok.wav");
-    const body = (await response.json()) as { error: string; details?: string };
+    const body = (await response.json()) as ErrorEnvelope;
+    assertErrorEnvelope(body);
 
     assert.equal(response.status, 500);
     assert.equal(body.error, "Inference backend internal error");
@@ -507,7 +531,8 @@ describe("node gateway critical paths", () => {
   it("returns 502 when python returns 200 with invalid prediction shape", async () => {
     predictMode = "bad_shape_200";
     const response = await postAudio(createMinimalWavBuffer(), "ok.wav");
-    const body = (await response.json()) as { error: string };
+    const body = (await response.json()) as ErrorEnvelope;
+    assertErrorEnvelope(body);
 
     assert.equal(response.status, 502);
     assert.ok(body.error.toLowerCase().includes("invalid"));
@@ -517,7 +542,8 @@ describe("node gateway critical paths", () => {
   it("returns 502 when python returns out-of-range probability", async () => {
     predictMode = "bad_prob_range_200";
     const response = await postAudio(createMinimalWavBuffer(), "ok.wav");
-    const body = (await response.json()) as { error: string };
+    const body = (await response.json()) as ErrorEnvelope;
+    assertErrorEnvelope(body);
 
     assert.equal(response.status, 502);
     assert.ok(body.error.toLowerCase().includes("invalid"));
@@ -527,7 +553,8 @@ describe("node gateway critical paths", () => {
   it("returns 502 when python returns negative processing time", async () => {
     predictMode = "bad_processing_time_200";
     const response = await postAudio(createMinimalWavBuffer(), "ok.wav");
-    const body = (await response.json()) as { error: string };
+    const body = (await response.json()) as ErrorEnvelope;
+    assertErrorEnvelope(body);
 
     assert.equal(response.status, 502);
     assert.ok(body.error.toLowerCase().includes("invalid"));
@@ -544,7 +571,8 @@ describe("node gateway critical paths", () => {
     }
 
     const blocked = await postInvalidPredict(quotaIp);
-    const body = (await blocked.json()) as { error: string; details?: string };
+    const body = (await blocked.json()) as ErrorEnvelope;
+    assertErrorEnvelope(body);
 
     assert.equal(blocked.status, 429);
     assert.equal(body.error, "Too many requests");
@@ -571,7 +599,8 @@ describe("node gateway critical paths", () => {
     const response = await fetch(`${gatewayBaseUrl}/api/unknown`);
     assert.equal(response.status, 404);
 
-    const body = (await response.json()) as { error: string; details?: string };
+    const body = (await response.json()) as ErrorEnvelope;
+    assertErrorEnvelope(body);
     assert.equal(body.error, "Not found");
     assert.ok((body.details || "").includes("does not exist"));
   });

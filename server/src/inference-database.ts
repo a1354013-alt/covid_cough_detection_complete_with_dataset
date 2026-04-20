@@ -10,10 +10,10 @@
  * Production-ready replacement for in-memory store.
  */
 
-import { Database } from 'better-sqlite3';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { existsSync, mkdirSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { logger } from './logger.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -54,6 +54,26 @@ export interface DailyStats {
   avgLatencyMs: number;
 }
 
+type BetterSqlite3Database = {
+  pragma: (sql: string) => unknown;
+  exec: (sql: string) => unknown;
+  prepare: (sql: string) => any;
+  close: () => void;
+};
+
+type BetterSqlite3DatabaseCtor = new (filename: string) => BetterSqlite3Database;
+
+const require = createRequire(import.meta.url);
+
+function loadBetterSqlite3Ctor(): BetterSqlite3DatabaseCtor {
+  const mod = require('better-sqlite3') as unknown as { default?: unknown };
+  const ctor = (mod as { default?: unknown }).default ?? mod;
+  if (typeof ctor !== 'function') {
+    throw new Error('better-sqlite3 is not available (missing native binding or incorrect export)');
+  }
+  return ctor as BetterSqlite3DatabaseCtor;
+}
+
 interface DatabaseConfig {
   dbPath?: string;
   maxConnections?: number;
@@ -63,7 +83,7 @@ interface DatabaseConfig {
 const DEFAULT_DB_PATH = path.resolve(__dirname, '../../data/inferences.db');
 
 export class InferenceDatabase {
-  private db: Database | null = null;
+  private db: BetterSqlite3Database | null = null;
   private dbPath: string;
   private isInitialized = false;
   private cacheHits = 0;
@@ -92,9 +112,10 @@ export class InferenceDatabase {
         logger.info('Created database directory', { path: dbDir });
       }
 
-      // Dynamic import to avoid issues when better-sqlite3 is not installed
-      const { Database } = await import('better-sqlite3');
-      this.db = new Database(this.dbPath);
+      // Dynamic import to avoid startup failures when better-sqlite3 is not installed.
+      // Note: better-sqlite3 is CommonJS; ESM import exposes it via `default`.
+      const DatabaseCtor = loadBetterSqlite3Ctor();
+      this.db = new DatabaseCtor(this.dbPath);
 
       // Enable WAL mode for better concurrent performance
       this.db.pragma('journal_mode = WAL');
@@ -303,7 +324,6 @@ export class InferenceDatabase {
       `).get() as { timestamp: string } | undefined;
 
       const total = totalRow.count || 0;
-      const cacheTotal = this.cacheHits + this.cacheMisses;
 
       return {
         totalRequests: total,

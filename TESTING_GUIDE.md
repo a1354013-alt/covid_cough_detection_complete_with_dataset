@@ -161,10 +161,10 @@ corepack pnpm test:e2e
 ### Automatic Service Detection
 
 The E2E test suite includes automatic service availability checks:
-- If `RUN_E2E` is not set, tests are skipped with message: "ℹ️ E2E tests skipped. Set RUN_E2E=1 to enable."
-- If services are not responding, tests are skipped with warnings showing which service failed
-- This prevents false failures in CI environments where services may not be running
-- The skip is handled gracefully using `describe.skip()` - no errors are thrown
+- If `RUN_E2E` is not set, tests are skipped with a clear message.
+- If services are not responding, tests are skipped with warnings showing which service failed.
+- This prevents false failures in CI environments where services may not be running.
+- The skip is handled at suite-definition time via `describe(..., { skip: true })` (no TDZ/ReferenceError risk).
 
 ### E2E Test Coverage
 
@@ -286,5 +286,5 @@ curl http://localhost:8000/healthz
 | Python | 90% | ~85% |
 
 ---
-Last Updated: 2024
+Last Updated: 2026
 Version: 1.0.13

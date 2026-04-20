@@ -26,8 +26,8 @@ export interface ApiError {
 /** Prefer gateway `error` (human summary); append `details` only in dev when distinct. */
 function gatewayErrorUserMessage(parsed: ApiError | null, fallback: string): string {
   const runtimeEnv = getRuntimeEnv();
-  const err = parsed?.error?.trim();
-  const det = parsed?.details?.trim();
+  const err = typeof parsed?.error === "string" ? parsed.error.trim() : "";
+  const det = typeof parsed?.details === "string" ? parsed.details.trim() : "";
   if (err) {
     if (runtimeEnv.dev && det && det !== err) {
       return `${err} (${det})`;
@@ -73,6 +73,38 @@ export interface VersionResponse {
   node_version: string;
   python_backend: Record<string, unknown>;
   timestamp: string;
+}
+
+export interface HistoryResponse {
+  count: number;
+  total: number;
+  records: Array<{
+    requestId: string;
+    timestamp: string;
+    filename: string;
+    label: "positive" | "negative";
+    confidence: number;
+    processingTimeMs: number;
+  }>;
+}
+
+export interface StatusResponse {
+  status: string;
+  timestamp: string;
+  uptime_ms: number;
+  metrics: {
+    totalRequests: number;
+    avgLatencyMs: number;
+    positiveCount: number;
+    negativeCount: number;
+    positivityRate: number;
+    errorRate: number;
+  };
+  database: {
+    enabled: boolean;
+    ready: boolean;
+  };
+  version: string;
 }
 
 class ApiClient {
@@ -270,6 +302,30 @@ class ApiClient {
     }
     return (await response.json()) as VersionResponse;
   }
+
+  async getStatus(): Promise<StatusResponse> {
+    const response = await fetch(`${this.baseUrl}/status`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) {
+      throw new ApiRequestError(`Status check failed: ${response.statusText}`, response.status);
+    }
+    return (await response.json()) as StatusResponse;
+  }
+
+  async getHistory(limit = 5, offset = 0): Promise<HistoryResponse> {
+    const url = new URL(`${this.baseUrl}/history`, window.location.origin);
+    url.searchParams.set("limit", String(limit));
+    url.searchParams.set("offset", String(offset));
+
+    const response = await fetch(url.toString(), {
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!response.ok) {
+      throw new ApiRequestError(`History request failed: ${response.statusText}`, response.status);
+    }
+    return (await response.json()) as HistoryResponse;
+  }
 }
 
 export function formatPrediction(response: ApiPredictionResponse): UIPredictionResult {
@@ -311,4 +367,3 @@ export function getAudioFileName(mimeType: string): string {
 }
 
 export const apiClient = new ApiClient(API_BASE_URL);
-

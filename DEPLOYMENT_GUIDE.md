@@ -283,5 +283,5 @@ export ALLOWED_ORIGINS="https://your-actual-domain.com"
 See [RELEASE_CHECKLIST.md](./RELEASE_CHECKLIST.md) for complete release validation steps.
 
 ---
-Last Updated: 2024
+Last Updated: 2026
 Version: 1.0.13

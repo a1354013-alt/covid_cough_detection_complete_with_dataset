@@ -5,7 +5,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import Busboy from "busboy";
 import type { FileInfo } from "busboy";
-import { createHash } from "node:crypto";
 
 import { convertToWav } from "./audio-converter.js";
 import { validateAudioFile } from "./audio-validator.js";
@@ -13,8 +12,13 @@ import { API_VERSION } from "./config/version.js";
 import { logger } from "./logger.js";
 import { RateLimiter } from "./rate-limiter.js";
 import { inferenceHistory } from "./inference-history.js";
-import { inferenceDatabase, type InferenceStats as DbInferenceStats } from "./inference-database.js";
+import { inferenceDatabase } from "./inference-database.js";
 import { optionalApiKeyAuth, getApiKeyStats } from "./api-key-auth.js";
+import { requestIdMiddleware, sendError } from "./http.js";
+import { registerHistoryRoutes } from "./routes/history.js";
+import { registerStatusRoutes } from "./routes/status.js";
+import { registerAdminRoutes } from "./routes/admin.js";
+import { registerPredictRoutes } from "./routes/predict.js";
 
 interface PredictionResponse {
   label: "positive" | "negative";
@@ -22,11 +26,6 @@ interface PredictionResponse {
   model_version: string;
   processing_time_ms: number;
   request_id?: string; // Added for request tracing
-}
-
-interface ErrorResponse {
-  error: string;
-  details?: string;
 }
 
 interface ParseMultipartResult {
@@ -68,7 +67,8 @@ interface ReadinessCheckResult {
 
 const isDev = process.env.NODE_ENV !== "production";
 const PORT = parseInteger(process.env.PORT, 3000);
-const PYTHON_API_URL = process.env.PYTHON_API_URL || "http://localhost:8000";
+const PYTHON_API_URL =
+  process.env.PYTHON_API_URL || process.env.PYTHON_BACKEND_URL || "http://localhost:8000";
 const PYTHON_API_ORIGIN = parseOrigin(PYTHON_API_URL);
 const REQUEST_TIMEOUT = parseInteger(process.env.REQUEST_TIMEOUT, 60000);
 const MAX_FILE_SIZE = 10 * 1024 * 1024;
@@ -241,14 +241,6 @@ function errorFromPythonPayload(payload: Record<string, unknown>): {
   }
 
   return { error: "Python backend returned an unknown error" };
-}
-
-function sendError(res: Response, status: number, error: string, details?: string): void {
-  const body: ErrorResponse = {
-    error,
-    ...(details ? { details } : {}),
-  };
-  res.status(status).json(body);
 }
 
 function setRateLimitHeaders(res: Response, result: RateLimitResult): number {
@@ -757,361 +749,59 @@ export async function startServer(): Promise<Server> {
   }
 
   const app = express();
+  const databaseReady = ENABLE_DATABASE && inferenceDatabase.isReady();
 
   app.set("trust proxy", TRUST_PROXY);
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
+  app.use(requestIdMiddleware);
   app.use(applySecurityHeaders);
   app.use(logApiRequestLifecycle);
   // Optional API key authentication (validates if provided, doesn't require)
   app.use(optionalApiKeyAuth);
 
-  app.get("/api/healthz", (_req: Request, res: Response) => {
-    const stats = ENABLE_DATABASE ? inferenceDatabase.getStats() : inferenceHistory.getStats();
-    res.json({
-      status: "alive",
-      timestamp: new Date().toISOString(),
-      service: "covid-cough-detection-api",
-      version: API_VERSION,
-      metrics: {
-        totalRequests: stats.totalRequests,
-        avgLatencyMs: stats.avgLatencyMs,
-        positiveCount: stats.positiveCount,
-        negativeCount: stats.negativeCount,
-        p95LatencyMs: (stats as DbInferenceStats).p95LatencyMs || 0,
-        p99LatencyMs: (stats as DbInferenceStats).p99LatencyMs || 0,
-        errorRate: (stats as DbInferenceStats).errorRate || 0,
-      },
-      database: {
-        enabled: ENABLE_DATABASE,
-        ready: ENABLE_DATABASE ? inferenceDatabase.isReady() : false,
-      },
-      authentication: getApiKeyStats(),
-    });
+  registerStatusRoutes(app, {
+    databaseReady,
+    enableDatabaseFlag: ENABLE_DATABASE,
+    inferenceDatabase,
+    inferenceHistory,
+    rateLimitWindowMs: RATE_LIMIT_WINDOW_MS,
+    rateLimitMaxRequests: RATE_LIMIT_MAX_REQUESTS,
+    getApiKeyStats,
+    isDev,
+    pythonApiUrl: PYTHON_API_URL,
+    checkPythonReadiness: async () => ({ ...(await checkPythonReadiness()) } as Record<string, unknown> & { isReady: boolean }),
+    buildReadinessBody: (readiness) => buildReadinessBody(readiness as any),
   });
 
-  // New endpoint: Get recent inference history (portfolio feature)
-  app.get("/api/history", (_req: Request, res: Response) => {
-    const limit = Math.min(
-      Math.max(1, Number.parseInt(String(req.query.limit), 10) || 10),
-      100
-    );
-    const offset = Math.max(0, Number.parseInt(String(req.query.offset), 10) || 0);
-    
-    const records = ENABLE_DATABASE 
-      ? inferenceDatabase.getRecent(limit, offset)
-      : inferenceHistory.getRecent(limit);
-    
-    res.json({
-      count: records.length,
-      total: ENABLE_DATABASE ? inferenceDatabase.getStats().totalRequests : inferenceHistory.getStats().totalRequests,
-      records,
-    });
+  registerHistoryRoutes(app, {
+    databaseReady,
+    enableDatabaseFlag: ENABLE_DATABASE,
+    inferenceDatabase,
+    inferenceHistory,
   });
 
-  // New endpoint: Daily statistics for charts
-  app.get("/api/stats/daily", (_req: Request, res: Response) => {
-    const days = Math.min(
-      Math.max(1, Number.parseInt(String(req.query.days), 10) || 7),
-      90
-    );
-    
-    if (!ENABLE_DATABASE) {
-      res.status(503).json({
-        error: "Database not enabled",
-        details: "Daily statistics require database persistence. Set ENABLE_DATABASE=true",
-      });
-      return;
-    }
-    
-    const dailyStats = inferenceDatabase.getDailyStats(days);
-    res.json({
-      days,
-      data: dailyStats,
-    });
+  registerAdminRoutes(app, {
+    databaseReady,
+    enableDatabaseFlag: ENABLE_DATABASE,
+    inferenceDatabase,
   });
 
-  // New endpoint: System status dashboard data (portfolio feature)
-  app.get("/api/status", (_req: Request, res: Response) => {
-    const stats = ENABLE_DATABASE ? inferenceDatabase.getStats() : inferenceHistory.getStats();
-    res.json({
-      status: "operational",
-      timestamp: new Date().toISOString(),
-      uptime_ms: process.uptime() * 1000,
-      metrics: {
-        totalRequests: stats.totalRequests,
-        avgLatencyMs: stats.avgLatencyMs,
-        p95LatencyMs: (stats as DbInferenceStats).p95LatencyMs || 0,
-        p99LatencyMs: (stats as DbInferenceStats).p99LatencyMs || 0,
-        positiveCount: stats.positiveCount,
-        negativeCount: stats.negativeCount,
-        positivityRate: stats.totalRequests > 0 
-          ? Math.round((stats.positiveCount / stats.totalRequests) * 100) 
-          : 0,
-        errorRate: (stats as DbInferenceStats).errorRate || 0,
-        requestsLast24h: (stats as DbInferenceStats).requestsLast24h || 0,
-        positivityRateLast24h: (stats as DbInferenceStats).positivityRateLast24h || 0,
-      },
-      cache: ENABLE_DATABASE ? inferenceDatabase.getCacheStats() : { hits: 0, misses: 0, hitRate: 0 },
-      rateLimit: {
-        windowMs: RATE_LIMIT_WINDOW_MS,
-        maxRequests: RATE_LIMIT_MAX_REQUESTS,
-      },
-      database: {
-        enabled: ENABLE_DATABASE,
-        ready: ENABLE_DATABASE ? inferenceDatabase.isReady() : false,
-      },
-      authentication: getApiKeyStats(),
-      version: API_VERSION,
-    });
-  });
-
-  // Admin endpoint: View recent errors (requires API key with admin permission)
-  app.get("/api/admin/errors", (_req: Request, res: Response) => {
-    const authenticatedReq = _req as typeof _req & { apiKeyPermissions?: string[] };
-    const permissions = authenticatedReq.apiKeyPermissions || [];
-    
-    if (!permissions.includes('admin')) {
-      res.status(403).json({
-        error: "Admin access required",
-        details: "This endpoint requires an API key with admin permissions",
-      });
-      return;
-    }
-    
-    const limit = Math.min(
-      Math.max(1, Number.parseInt(String(req.query.limit), 10) || 20),
-      100
-    );
-    
-    if (!ENABLE_DATABASE) {
-      res.status(503).json({
-        error: "Database not enabled",
-        details: "Error logs require database persistence",
-      });
-      return;
-    }
-    
-    const errors = inferenceDatabase.getRecentErrors(limit);
-    res.json({
-      count: errors.length,
-      errors,
-    });
-  });
-
-  app.get("/api/readyz", async (_req: Request, res: Response) => {
-    const readiness = await checkPythonReadiness();
-    const body = buildReadinessBody(readiness);
-    if (!readiness.isReady) {
-      res.status(503).json(body);
-      return;
-    }
-    res.json(body);
-  });
-
-  app.get("/api/health", async (_req: Request, res: Response) => {
-    const readiness = await checkPythonReadiness();
-    const body = buildReadinessBody(readiness);
-    if (!readiness.isReady) {
-      res.status(503).json(body);
-      return;
-    }
-    res.json(body);
-  });
-
-  app.post("/api/predict", async (req: Request, res: Response) => {
-    const startTime = Date.now();
-
-    const rateLimit = checkRateLimit(req);
-    const resetInSeconds = setRateLimitHeaders(res, rateLimit);
-
-    if (!rateLimit.allowed) {
-      res.setHeader("Retry-After", resetInSeconds.toString());
-      sendError(
-        res,
-        429,
-        "Too many requests",
-        `Rate limit exceeded: ${RATE_LIMIT_MAX_REQUESTS} requests per minute`
-      );
-      return;
-    }
-
-    const parseResult = await parseMultipart(req);
-    if (parseResult.error) {
-      sendError(res, parseResult.status ?? 400, parseResult.error, parseResult.details);
-      return;
-    }
-
-    if (!parseResult.file) {
-      sendError(res, 400, "No audio file provided", "Missing multipart audio payload");
-      return;
-    }
-
-    const validation = validateAudioFile(parseResult.file, parseResult.filename, MAX_FILE_SIZE);
-    if (!validation.valid) {
-      sendError(
-        res,
-        400,
-        validation.error || "Invalid audio file",
-        validation.details ? JSON.stringify(validation.details) : undefined
-      );
-      return;
-    }
-
-    // Compute audio hash for caching
-    const audioHash = createHash('sha256').update(parseResult.file).digest('hex');
-    
-    // Check cache first (if database is enabled)
-    if (ENABLE_DATABASE) {
-      const cached = inferenceDatabase.getCachedPrediction(audioHash);
-      if (cached) {
-        logger.info('Cache hit', { audioHash: audioHash.substring(0, 16) + '...' });
-        
-        // Record cache hit in history
-        const recorded = inferenceDatabase.add({
-          requestId: InferenceHistoryStore.generateRequestId(),
-          timestamp: new Date().toISOString(),
-          filename: parseResult.filename || "unknown",
-          label: cached.label,
-          confidence: cached.confidence,
-          processingTimeMs: cached.processingTimeMs,
-          clientIp: getRateLimitKey(req),
-          audioHash,
-        });
-        
-        res.json({
-          ...cached,
-          request_id: recorded.requestId,
-          cached: true,
-        });
-        return;
-      }
-    }
-
-    logger.logPrediction(
-      parseResult.filename || "unknown",
-      parseResult.file.length,
-      validation.format || "unknown"
-    );
-
-    const forwarded = await forwardToPythonBackend(
-      parseResult.file,
-      parseResult.filename || "audio.wav",
-      parseResult.mimeType || "audio/wav"
-    );
-
-    if (!forwarded.ok) {
-      const mapped = mapBackendFailureToGatewayResponse(forwarded);
-      
-      // Log error to database
-      if (ENABLE_DATABASE) {
-        inferenceDatabase.logError('PREDICTION_FAILED', mapped.error, {
-          endpoint: '/api/predict',
-          clientIp: getRateLimitKey(req),
-          stackTrace: mapped.details,
-        });
-      }
-      
-      sendError(res, mapped.status, mapped.error, mapped.details);
-      return;
-    }
-
-    const processingTimeMs = Date.now() - startTime;
-
-    // Record inference history and cache result (if database enabled)
-    let recorded;
-    if (ENABLE_DATABASE) {
-      recorded = inferenceDatabase.add({
-        requestId: InferenceHistoryStore.generateRequestId(),
-        timestamp: new Date().toISOString(),
-        filename: parseResult.filename || "unknown",
-        label: forwarded.prediction.label,
-        confidence: forwarded.prediction.prob,
-        processingTimeMs,
-        clientIp: getRateLimitKey(req),
-        audioHash,
-      });
-      
-      // Cache the prediction result
-      inferenceDatabase.setCachedPrediction(audioHash, {
-        label: forwarded.prediction.label,
-        confidence: forwarded.prediction.prob,
-        processingTimeMs,
-        modelVersion: forwarded.prediction.model_version,
-      }, CACHE_TTL_SECONDS);
-    } else {
-      // Fallback to in-memory store
-      recorded = inferenceHistory.add({
-        timestamp: new Date(),
-        filename: parseResult.filename || "unknown",
-        label: forwarded.prediction.label,
-        confidence: forwarded.prediction.prob,
-        processingTimeMs,
-        clientIp: getRateLimitKey(req),
-      });
-    }
-
-    logger.logPredictionResult(
-      forwarded.prediction.label,
-      forwarded.prediction.prob,
-      processingTimeMs
-    );
-
-    // Return prediction with request ID for tracing
-    const responsePayload: PredictionResponse = {
-      ...forwarded.prediction,
-      request_id: recorded.requestId,
-    };
-
-    res.json(responsePayload);
-  });
-
-  app.get("/api/version", async (_req: Request, res: Response) => {
-    try {
-      const response = await fetch(`${PYTHON_API_URL}/version`, {
-        signal: AbortSignal.timeout(5000),
-      });
-
-      if (!response.ok) {
-        res.json({
-          api_version: API_VERSION,
-          node_version: process.version,
-          python_backend: {
-            status: "degraded",
-            error: isDev
-              ? `Python backend responded with ${response.status}`
-              : "Python backend is degraded",
-          },
-          timestamp: new Date().toISOString(),
-        });
-        return;
-      }
-
-      const backendVersion = (await response.json()) as Record<string, unknown>;
-      res.json({
-        api_version: API_VERSION,
-        node_version: process.version,
-        python_backend: {
-          status: "ready",
-          ...backendVersion,
-        },
-        timestamp: new Date().toISOString(),
-      });
-    } catch (err) {
-      res.json({
-        api_version: API_VERSION,
-        node_version: process.version,
-        python_backend: {
-          status: "degraded",
-          error: isDev
-            ? err instanceof Error
-              ? err.message
-              : String(err)
-            : "Python backend connection failed",
-        },
-        timestamp: new Date().toISOString(),
-      });
-    }
+  registerPredictRoutes(app, {
+    databaseReady,
+    maxFileSizeBytes: MAX_FILE_SIZE,
+    cacheTtlSeconds: CACHE_TTL_SECONDS,
+    rateLimitMaxRequests: RATE_LIMIT_MAX_REQUESTS,
+    checkRateLimit,
+    setRateLimitHeaders,
+    parseMultipart,
+    validateAudioFile,
+    forwardToPythonBackend,
+    mapBackendFailureToGatewayResponse,
+    getRateLimitKey,
+    inferenceDatabase,
+    inferenceHistory,
+    logger,
   });
 
   const publicDir = resolveClientPublicDir();
@@ -1137,7 +827,8 @@ export async function startServer(): Promise<Server> {
   }
 
   app.use((_req: Request, res: Response) => {
-    sendError(res, 404, "Not found", "The requested endpoint does not exist");
+    // If request_id middleware was skipped for some reason, still return a stable envelope.
+    sendError(_req, res, 404, "Not found", "The requested endpoint does not exist");
   });
 
   const server = createServer(app);
@@ -1147,7 +838,7 @@ export async function startServer(): Promise<Server> {
 
   // Start cache cleanup interval if database is enabled
   let cacheCleanupInterval: ReturnType<typeof setInterval> | null = null;
-  if (ENABLE_DATABASE) {
+  if (databaseReady) {
     cacheCleanupInterval = setInterval(() => {
       const deleted = inferenceDatabase.cleanupExpiredCache();
       if (deleted > 0) {

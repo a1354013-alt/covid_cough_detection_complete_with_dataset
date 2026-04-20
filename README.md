@@ -93,10 +93,14 @@ curl http://localhost:3000/api/readyz
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/healthz` | GET | Liveness probe |
-| `/readyz` | GET | Readiness (includes backend status) |
-| `/version` | GET | Version information |
-| `/predict` | POST | Audio prediction (multipart/form-data) |
+| `/api/healthz` | GET | Liveness probe |
+| `/api/readyz` | GET | Readiness (includes backend status) |
+| `/api/version` | GET | Version information |
+| `/api/predict` | POST | Audio prediction (multipart/form-data) |
+| `/api/history` | GET | Recent inference history (demo/portfolio) |
+| `/api/status` | GET | System status dashboard payload (demo/portfolio) |
+| `/api/stats/daily` | GET | Daily statistics (requires DB enabled) |
+| `/api/admin/errors` | GET | Recent error logs (requires admin API key + DB) |
 
 ### Prediction Request
 
@@ -198,9 +202,14 @@ covid-cough-detection/
 | Variable | Default | Required | Description |
 |----------|---------|----------|-------------|
 | `PORT` | 3000 | No | HTTP port |
-| `PYTHON_API_URL` | http://localhost:8000 | No | Backend URL |
+| `PYTHON_API_URL` | http://localhost:8000 | No | Backend URL (alias: `PYTHON_BACKEND_URL`) |
 | `ALLOWED_ORIGINS` | * | Yes (prod) | CORS origins (comma-separated) |
 | `RATE_LIMIT_MAX_REQUESTS` | 30 | No | Max requests per window |
+| `ENABLE_DATABASE` | true | No | Enable SQLite persistence/caching (falls back to memory if unavailable) |
+| `DATABASE_PATH` | server/data/inferences.db | No | SQLite file path |
+| `CACHE_TTL_SECONDS` | 3600 | No | Prediction cache TTL (seconds) |
+| `API_KEYS` | - | No | Optional API keys (comma-separated) |
+| `API_KEY_FILE` | - | No | Optional API key file path (one key per line) |
 
 ### Python Service
 
@@ -232,7 +241,6 @@ covid-cough-detection/
 ## 🚧 Future Enhancements
 
 - [ ] Batch analysis support
-- [ ] Inference history tracking
 - [ ] Real-time streaming inference
 - [ ] Multi-model ensemble support
 - [ ] Enhanced monitoring dashboard
@@ -253,5 +261,5 @@ MIT License - see LICENSE file for details.
 ---
 
 **Version**: 1.0.13  
-**Last Updated**: 2024  
+**Last Updated**: 2026  
 **Status**: Production-ready for research/demo use

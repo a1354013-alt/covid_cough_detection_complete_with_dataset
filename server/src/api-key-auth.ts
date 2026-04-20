@@ -13,6 +13,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { logger } from './logger.js';
 import { existsSync, readFileSync } from 'node:fs';
+import { sendError } from './http.js';
 
 export interface ApiKeyConfig {
   key: string;
@@ -205,10 +206,7 @@ export function createApiKeyAuth(options: AuthMiddlewareOptions = {}) {
       // No keys configured, authentication is effectively disabled
       if (options.required) {
         logger.warn('API key authentication is required but no keys are configured');
-        res.status(503).json({
-          error: 'Authentication unavailable',
-          details: 'No API keys configured on server',
-        });
+        sendError(req, res, 503, 'Authentication unavailable', 'No API keys configured on server');
         return;
       }
       
@@ -231,10 +229,13 @@ export function createApiKeyAuth(options: AuthMiddlewareOptions = {}) {
           path: req.path,
           keyPrefix: apiKey ? apiKey.substring(0, 8) + '...' : 'none' 
         });
-        res.status(401).json({
-          error: 'Invalid API key',
-          details: 'A valid API key is required to access this endpoint',
-        });
+        sendError(
+          req,
+          res,
+          401,
+          'Invalid API key',
+          'A valid API key is required to access this endpoint'
+        );
         return;
       }
       
@@ -276,10 +277,13 @@ export function requirePermissions(...requiredPermissions: Array<'read' | 'write
         path: req.path,
         ip: req.ip,
       });
-      res.status(403).json({
-        error: 'Insufficient permissions',
-        details: `This endpoint requires one of: ${requiredPermissions.join(', ')}`,
-      });
+      sendError(
+        req,
+        res,
+        403,
+        'Insufficient permissions',
+        `This endpoint requires one of: ${requiredPermissions.join(', ')}`
+      );
       return;
     }
 

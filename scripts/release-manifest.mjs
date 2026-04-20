@@ -28,12 +28,27 @@ function isExcluded(relPosixPath) {
     ".vite/",
     "coverage/",
     "dataset/",
+    "cache/",
+    "tmp/",
+    ".cache/",
+    ".tmp/",
     "patches/",
     "python_project/models/",
     "python_project/data/",
     "python_project/src/experimental/",
     "python_project/experimental/",
   ];
+
+  if (rel === ".env") {
+    return true;
+  }
+  if (rel.startsWith(".env.") && rel !== ".env.example") {
+    return true;
+  }
+
+  const baseName = rel.split("/").pop() || rel;
+  if (baseName === ".DS_Store" || baseName === "Thumbs.db") return true;
+  if (baseName.endsWith(".log") || baseName.endsWith(".tmp") || baseName.endsWith(".swp")) return true;
 
   return excludedPrefixes.some((prefix) => rel === prefix.slice(0, -1) || rel.startsWith(prefix));
 }

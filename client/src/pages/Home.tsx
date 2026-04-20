@@ -7,7 +7,14 @@ import {
   PREFERRED_RECORDER_MIME_TYPES,
   SUPPORTED_BACKEND_MIME_PREFIXES,
 } from "@/const";
-import { ApiRequestError, apiClient, formatPrediction, getAudioFileName } from "@/lib/api";
+import {
+  ApiRequestError,
+  apiClient,
+  formatPrediction,
+  getAudioFileName,
+  type HistoryResponse,
+  type StatusResponse,
+} from "@/lib/api";
 import {
   canAnalyze,
   createInitialHomeFlowState,
@@ -27,10 +34,15 @@ import {
   Upload,
 } from "lucide-react";
 import type { ChangeEvent } from "react";
-import { useEffect, useReducer, useRef } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 
 export default function Home() {
   const [state, dispatch] = useReducer(homeFlowReducer, undefined, createInitialHomeFlowState);
+  const [dashboard, setDashboard] = useState<{
+    status: StatusResponse | null;
+    history: HistoryResponse | null;
+    error: string | null;
+  }>({ status: null, history: null, error: null });
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -110,6 +122,7 @@ export default function Home() {
 
   useEffect(() => {
     void refreshBackendReadiness();
+    void refreshDashboard();
 
     return () => {
       stopTimer();
@@ -141,6 +154,16 @@ export default function Home() {
     } catch (err) {
       const message = err instanceof Error ? err.message : "Backend connection failed.";
       dispatch({ type: "BACKEND_DEGRADED", message });
+    }
+  };
+
+  const refreshDashboard = async () => {
+    try {
+      const [status, history] = await Promise.all([apiClient.getStatus(), apiClient.getHistory(5, 0)]);
+      setDashboard({ status, history, error: null });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to load dashboard data.";
+      setDashboard({ status: null, history: null, error: message });
     }
   };
 
@@ -539,6 +562,95 @@ export default function Home() {
             )}
           </CardContent>
         </Card>
+
+        <div className="mt-6 grid gap-4 md:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center justify-between">
+                <span>System Status</span>
+                <button
+                  type="button"
+                  onClick={() => void refreshDashboard()}
+                  className="text-sm font-normal text-blue-700 hover:underline"
+                >
+                  Refresh
+                </button>
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2 text-sm text-gray-700">
+              {dashboard.error && (
+                <Alert>
+                  <AlertDescription>{dashboard.error}</AlertDescription>
+                </Alert>
+              )}
+
+              {!dashboard.error && !dashboard.status && (
+                <div className="text-gray-500">Loading...</div>
+              )}
+
+              {dashboard.status && (
+                <>
+                  <div className="flex justify-between">
+                    <span>Status</span>
+                    <span className="font-mono">{dashboard.status.status}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Version</span>
+                    <span className="font-mono">{dashboard.status.version}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Database</span>
+                    <span className="font-mono">
+                      {dashboard.status.database.enabled ? (dashboard.status.database.ready ? "ready" : "degraded") : "disabled"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Total Requests</span>
+                    <span className="font-mono">{dashboard.status.metrics.totalRequests}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Avg Latency</span>
+                    <span className="font-mono">{dashboard.status.metrics.avgLatencyMs}ms</span>
+                  </div>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Recent History</CardTitle>
+            </CardHeader>
+            <CardContent className="text-sm text-gray-700">
+              {!dashboard.history && !dashboard.error && <div className="text-gray-500">Loading...</div>}
+
+              {dashboard.history && dashboard.history.records.length === 0 && (
+                <div className="text-gray-500">No history yet.</div>
+              )}
+
+              {dashboard.history && dashboard.history.records.length > 0 && (
+                <div className="space-y-2">
+                  {dashboard.history.records.map((record) => (
+                    <div key={record.requestId} className="rounded-md border border-gray-200 bg-white p-3">
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono text-xs text-gray-500">
+                          {new Date(record.timestamp).toLocaleTimeString()}
+                        </span>
+                        <span className="font-mono text-xs text-gray-500">
+                          {Math.round(record.confidence * 100)}%
+                        </span>
+                      </div>
+                      <div className="mt-1 flex items-center justify-between">
+                        <span className="truncate">{record.filename}</span>
+                        <span className="font-semibold">{record.label}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </div>
 
         <div className="mt-8 text-center text-sm text-gray-600">
           <p>
