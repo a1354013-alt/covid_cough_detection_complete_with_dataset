@@ -1,13 +1,11 @@
 /**
  * SQLite Database Store for Inference History
  * 
- * Provides persistent storage for inference records with:
- * - Automatic schema migration
- * - Parameterized queries (SQL injection prevention)
- * - Connection pooling
- * - Graceful shutdown
- * 
- * Production-ready replacement for in-memory store.
+ * Provides optional persistence for inference history, error logs, and prediction caching.
+ *
+ * Notes / constraints:
+ * - Uses a single-process SQLite database via better-sqlite3 (one connection per process).
+ * - better-sqlite3 is an optional dependency; when unavailable, the gateway can run without DB features.
  */
 
 import path from 'node:path';
@@ -404,7 +402,7 @@ export class InferenceDatabase {
   getCachedPrediction(audioHash: string): {
     label: 'positive' | 'negative';
     confidence: number;
-    processingTimeMs: number;
+    modelProcessingTimeMs: number;
     modelVersion: string;
   } | null {
     if (!this.db) {
@@ -423,7 +421,7 @@ export class InferenceDatabase {
         return {
           label: row.label as 'positive' | 'negative',
           confidence: row.confidence as number,
-          processingTimeMs: row.processing_time_ms as number,
+          modelProcessingTimeMs: row.processing_time_ms as number,
           modelVersion: row.model_version as string,
         };
       }
@@ -442,7 +440,7 @@ export class InferenceDatabase {
     prediction: {
       label: 'positive' | 'negative';
       confidence: number;
-      processingTimeMs: number;
+      modelProcessingTimeMs: number;
       modelVersion: string;
     },
     ttlSeconds = 3600 // Default 1 hour
@@ -462,7 +460,7 @@ export class InferenceDatabase {
         audioHash,
         prediction.label,
         prediction.confidence,
-        prediction.processingTimeMs,
+        prediction.modelProcessingTimeMs,
         prediction.modelVersion,
         ttlSeconds.toString()
       );

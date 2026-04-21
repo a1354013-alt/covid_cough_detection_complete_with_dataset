@@ -111,7 +111,9 @@ def test_version_not_initialized_uses_stable_error_shape(monkeypatch):
     with pytest.raises(HTTPException) as exc_info:
         asyncio.run(app_module.get_version())
 
-    response = asyncio.run(app_module.http_exception_handler(make_request("/version"), exc_info.value))
+    response = asyncio.run(
+        app_module.http_exception_handler(make_request("/version"), exc_info.value)
+    )
     payload = decode_json_response(response)
 
     assert response.status_code == 503

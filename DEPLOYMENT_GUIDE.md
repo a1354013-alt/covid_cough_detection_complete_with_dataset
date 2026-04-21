@@ -48,7 +48,7 @@ This guide covers deployment strategies for the COVID-19 Cough Detection platfor
 ```bash
 # Node.js 20+ with pnpm
 node --version  # v20.x
-pnpm --version  # 10.x
+pnpm --version  # 10.33.0
 
 # Python 3.10-3.12
 python --version  # 3.10+
@@ -136,7 +136,7 @@ curl -X POST http://localhost:3000/api/predict \
 docker compose logs -f
 
 # Specific service
-docker compose logs -f node-gateway
+docker compose logs -f node-backend
 docker compose logs -f python-backend
 ```
 
@@ -230,8 +230,8 @@ spec:
   template:
     spec:
       containers:
-      - name: node-gateway
-        image: your-registry/node-gateway:latest
+      - name: node-backend
+        image: your-registry/node-backend:latest
         ports:
         - containerPort: 3000
         env:

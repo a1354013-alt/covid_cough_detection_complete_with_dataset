@@ -26,6 +26,7 @@ type BackendForwardSuccess = {
     label: "positive" | "negative";
     prob: number;
     model_version: string;
+    // Python-reported model inference time.
     processing_time_ms: number;
   };
 };
@@ -52,7 +53,7 @@ type InferenceDatabaseLike = {
   ) => {
     label: "positive" | "negative";
     confidence: number;
-    processingTimeMs: number;
+    modelProcessingTimeMs: number;
     modelVersion: string;
   } | null;
   add: (record: {
@@ -70,7 +71,7 @@ type InferenceDatabaseLike = {
     prediction: {
       label: "positive" | "negative";
       confidence: number;
-      processingTimeMs: number;
+      modelProcessingTimeMs: number;
       modelVersion: string;
     },
     ttlSeconds: number
@@ -172,6 +173,8 @@ export function registerPredictRoutes(
     if (deps.databaseReady) {
       const cached = deps.inferenceDatabase.getCachedPrediction(audioHash);
       if (cached) {
+        const requestProcessingTimeMs = Date.now() - startTime;
+
         deps.logger.info("Cache hit", { audioHash: `${audioHash.substring(0, 16)}...` });
 
         deps.inferenceDatabase.add({
@@ -180,7 +183,7 @@ export function registerPredictRoutes(
           filename: parseResult.filename || "unknown",
           label: cached.label,
           confidence: cached.confidence,
-          processingTimeMs: cached.processingTimeMs,
+          processingTimeMs: requestProcessingTimeMs,
           clientIp: deps.getRateLimitKey(req),
           audioHash,
         });
@@ -189,7 +192,8 @@ export function registerPredictRoutes(
           label: cached.label,
           prob: cached.confidence,
           model_version: cached.modelVersion,
-          processing_time_ms: cached.processingTimeMs,
+          processing_time_ms: requestProcessingTimeMs,
+          model_processing_time_ms: cached.modelProcessingTimeMs,
           request_id: requestId,
           cached: true,
         });
@@ -224,7 +228,8 @@ export function registerPredictRoutes(
       return;
     }
 
-    const processingTimeMs = Date.now() - startTime;
+    const requestProcessingTimeMs = Date.now() - startTime;
+    const modelProcessingTimeMs = forwarded.prediction.processing_time_ms;
 
     let recorded: { requestId: string };
     if (deps.databaseReady) {
@@ -234,7 +239,7 @@ export function registerPredictRoutes(
         filename: parseResult.filename || "unknown",
         label: forwarded.prediction.label,
         confidence: forwarded.prediction.prob,
-        processingTimeMs,
+        processingTimeMs: requestProcessingTimeMs,
         clientIp: deps.getRateLimitKey(req),
         audioHash,
       });
@@ -244,7 +249,7 @@ export function registerPredictRoutes(
         {
           label: forwarded.prediction.label,
           confidence: forwarded.prediction.prob,
-          processingTimeMs,
+          modelProcessingTimeMs,
           modelVersion: forwarded.prediction.model_version,
         },
         deps.cacheTtlSeconds
@@ -255,7 +260,7 @@ export function registerPredictRoutes(
         filename: parseResult.filename || "unknown",
         label: forwarded.prediction.label,
         confidence: forwarded.prediction.prob,
-        processingTimeMs,
+        processingTimeMs: requestProcessingTimeMs,
         clientIp: deps.getRateLimitKey(req),
       });
     }
@@ -263,13 +268,17 @@ export function registerPredictRoutes(
     deps.logger.logPredictionResult(
       forwarded.prediction.label,
       forwarded.prediction.prob,
-      processingTimeMs
+      requestProcessingTimeMs
     );
 
     res.json({
-      ...forwarded.prediction,
+      label: forwarded.prediction.label,
+      prob: forwarded.prediction.prob,
+      model_version: forwarded.prediction.model_version,
+      processing_time_ms: requestProcessingTimeMs,
+      model_processing_time_ms: modelProcessingTimeMs,
       request_id: recorded.requestId,
+      cached: false,
     });
   });
 }
-

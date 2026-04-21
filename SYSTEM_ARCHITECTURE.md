@@ -188,7 +188,7 @@ Browser ←→ Node :3000 (static + API) ←→ Python :8000
               docker-compose.yml
                     ↓
             ┌───────────────┐
-            │ node-gateway  │
+            │ node-backend  │
             │ python-backend│
             └───────────────┘
 ```

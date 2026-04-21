@@ -11,7 +11,7 @@ A production-oriented monorepo implementing an AI-powered cough audio analysis p
 
 This platform showcases:
 - **Full-stack TypeScript + Python integration** with clean API boundaries
-- **Production-ready patterns**: rate limiting, health checks, graceful error handling
+- **Production-oriented patterns**: rate limiting, health checks, graceful error handling
 - **ML inference pipeline** with strict validation and monitoring
 - **Containerized deployment** with Docker Compose
 - **Comprehensive testing** across all layers (unit, integration, E2E)
@@ -42,6 +42,7 @@ This platform showcases:
 ### Prerequisites
 
 - Node.js 20+ with pnpm 10+
+- pnpm is pinned via Corepack (`packageManager: pnpm@10.33.0`)
 - Python 3.10-3.12
 - FFmpeg (for audio conversion)
 - Git
@@ -115,7 +116,9 @@ Response:
   "label": "positive",
   "prob": 0.84,
   "model_version": "checkpoint-2026.04",
-  "processing_time_ms": 123.4
+  "processing_time_ms": 187,
+  "model_processing_time_ms": 123.4,
+  "cached": false
 }
 ```
 
@@ -262,4 +265,4 @@ MIT License - see LICENSE file for details.
 
 **Version**: 1.0.13  
 **Last Updated**: 2026  
-**Status**: Production-ready for research/demo use
+**Status**: Production-oriented for research/demo use

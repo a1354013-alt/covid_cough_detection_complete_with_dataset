@@ -83,12 +83,19 @@ Success `200`:
   "label": "positive",
   "prob": 0.84,
   "model_version": "checkpoint-2026.04",
-  "processing_time_ms": 123.4,
+  "processing_time_ms": 187,
+  "model_processing_time_ms": 123.4,
+  "cached": false,
   "request_id": "req_abc123_xyz789"
 }
 ```
 
 The `request_id` field enables request tracing and can be used to look up the inference in the history endpoint.
+
+Timing fields:
+- `processing_time_ms`: gateway-measured end-to-end request time (includes cache lookup + network).
+- `model_processing_time_ms`: Python-reported model inference time (available for both cache hits and misses).
+- `cached`: `true` when the response is served from the prediction cache.
 
 Gateway response-code mapping:
 - `400`: bad multipart/input/format mismatch

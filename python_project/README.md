@@ -63,6 +63,8 @@ Prediction success response:
 }
 ```
 
+`processing_time_ms` is the Python service's model-side inference time. The Node gateway reports its own end-to-end `processing_time_ms` separately and exposes the model time as `model_processing_time_ms`.
+
 Error response contract:
 
 ```json

@@ -1,7 +1,5 @@
 """Contract smoke: SimpleConvNet forward with standard mel feature map shape."""
 
-import sys
-
 import numpy as np
 import torch
 

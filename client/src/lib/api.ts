@@ -5,7 +5,14 @@ export interface ApiPredictionResponse {
   label: "positive" | "negative";
   prob: number;
   model_version: string;
+  /** Gateway-measured end-to-end request time (includes cache lookup + network). */
   processing_time_ms: number;
+  /** Python-reported model inference time (from the original inference). */
+  model_processing_time_ms?: number;
+  /** True when response was served from cache. */
+  cached?: boolean;
+  /** Stable request identifier for tracing. */
+  request_id?: string;
 }
 
 export interface UIPredictionResult {

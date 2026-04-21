@@ -249,7 +249,11 @@ before(async () => {
   process.env.ALLOWED_ORIGINS = "http://allowed.example";
 
   const mod = await import("./index.js");
+  const sigintBefore = process.listeners("SIGINT").length;
+  const sigtermBefore = process.listeners("SIGTERM").length;
   gatewayServer = await mod.startServer();
+  assert.equal(process.listeners("SIGINT").length, sigintBefore + 1);
+  assert.equal(process.listeners("SIGTERM").length, sigtermBefore + 1);
 });
 
 after(async () => {

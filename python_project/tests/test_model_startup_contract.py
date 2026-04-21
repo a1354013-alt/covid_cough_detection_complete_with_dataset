@@ -1,6 +1,9 @@
 import pytest
 
-from covid_cough_detection.model_inference import DEFAULT_MODEL_VERSION, ModelInference  # noqa: E402
+from covid_cough_detection.model_inference import (  # noqa: E402
+    DEFAULT_MODEL_VERSION,
+    ModelInference,
+)
 
 
 def test_model_inference_requires_model_path():

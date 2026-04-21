@@ -131,7 +131,11 @@ if allowed_origins_raw == "*":
     # Only allow localhost for development when wildcard is used
     allowed_origins = ["http://localhost:3000", "http://localhost:5173", "http://localhost:8000"]
 else:
-    allowed_origins = [origin.strip() for origin in allowed_origins_raw.split(",") if origin.strip()]
+    allowed_origins = [
+        origin.strip()
+        for origin in allowed_origins_raw.split(",")
+        if origin.strip()
+    ]
 
 app.add_middleware(
     CORSMiddleware,

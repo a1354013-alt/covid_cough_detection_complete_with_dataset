@@ -103,21 +103,22 @@ class ModelInference:
                 # Validate model architecture by checking state dict keys
                 expected_keys = {
                     "conv1.weight", "conv1.bias",
-                    "conv2.weight", "conv2.bias", 
+                    "conv2.weight", "conv2.bias",
                     "conv3.weight", "conv3.bias",
                     "fc1.weight", "fc1.bias",
                     "fc2.weight", "fc2.bias",
                 }
                 actual_keys = set(state_dict.keys())
-                
+
                 # Check for required keys (allowing for additional keys like dropout)
                 if not expected_keys.issubset(actual_keys):
                     missing = expected_keys - actual_keys
                     raise ValueError(
                         f"Model architecture mismatch. Missing expected parameters: {missing}. "
-                        f"Expected SimpleConvNet architecture with layers: conv1, conv2, conv3, fc1, fc2"
+                        "Expected SimpleConvNet architecture with layers: "
+                        "conv1, conv2, conv3, fc1, fc2"
                     )
-                
+
                 model = SimpleConvNet(input_channels=1, num_classes=2)
                 model.load_state_dict(state_dict)
                 self.model = model

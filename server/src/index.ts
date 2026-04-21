@@ -20,10 +20,14 @@ import { registerStatusRoutes } from "./routes/status.js";
 import { registerAdminRoutes } from "./routes/admin.js";
 import { registerPredictRoutes } from "./routes/predict.js";
 
-interface PredictionResponse {
+interface BackendPredictionResponse {
   label: "positive" | "negative";
   prob: number;
   model_version: string;
+  /**
+   * Model-side processing time reported by the Python inference service.
+   * Gateway end-to-end request time is measured separately in the Node route.
+   */
   processing_time_ms: number;
   request_id?: string; // Added for request tracing
 }
@@ -45,7 +49,7 @@ interface RateLimitResult {
 
 interface BackendForwardSuccess {
   ok: true;
-  prediction: PredictionResponse;
+  prediction: BackendPredictionResponse;
 }
 
 interface BackendForwardFailure {
@@ -105,7 +109,7 @@ const rateLimiter = new RateLimiter(RATE_LIMIT_WINDOW_MS, RATE_LIMIT_MAX_REQUEST
   cleanupIntervalMs: RATE_LIMIT_CLEANUP_INTERVAL_MS,
 });
 let signalHandlersRegistered = false;
-let activeServer: Server | null = null;
+let shutdownInFlight: Promise<void> | null = null;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -179,7 +183,7 @@ function normalizePythonPayload(payload: unknown): Record<string, unknown> {
   return detail ?? record;
 }
 
-function parseValidatedPredictionResponse(payload: unknown): PredictionResponse | null {
+function parseValidatedPredictionResponse(payload: unknown): BackendPredictionResponse | null {
   const record = asRecord(payload);
   if (!record) return null;
 
@@ -721,24 +725,44 @@ function logApiRequestLifecycle(req: Request, res: Response, next: NextFunction)
   next();
 }
 
-function registerSignalHandlers(): void {
+function registerSignalHandlers(deps: {
+  server: Server;
+  stopBackgroundWork: () => void;
+  closeDatabase: () => Promise<void>;
+}): void {
   if (signalHandlersRegistered) return;
 
   const shutdown = (signal: NodeJS.Signals): void => {
-    logger.info(`${signal} received, shutting down HTTP server`);
-    if (!activeServer) {
-      process.exit(0);
+    if (shutdownInFlight) {
+      logger.info(`${signal} received while shutdown is in progress`);
       return;
     }
 
-    activeServer.close(() => {
+    shutdownInFlight = (async () => {
+      logger.info(`${signal} received, starting graceful shutdown`);
+
+      // Stop accepting new work ASAP (rate limiter + intervals).
+      deps.stopBackgroundWork();
+
+      await new Promise<void>((resolve) => {
+        deps.server.close(() => resolve());
+      });
       logger.info("HTTP server closed");
+
+      await deps.closeDatabase();
+
       process.exit(0);
+    })().catch((err) => {
+      logger.error(
+        "Graceful shutdown failed",
+        err instanceof Error ? err : new Error(String(err))
+      );
+      process.exit(1);
     });
   };
 
-  process.on("SIGINT", () => shutdown("SIGINT"));
-  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.once("SIGINT", () => shutdown("SIGINT"));
+  process.once("SIGTERM", () => shutdown("SIGTERM"));
   signalHandlersRegistered = true;
 }
 
@@ -832,8 +856,6 @@ export async function startServer(): Promise<Server> {
   });
 
   const server = createServer(app);
-  activeServer = server;
-  registerSignalHandlers();
   rateLimiter.start();
 
   // Start cache cleanup interval if database is enabled
@@ -852,9 +874,6 @@ export async function startServer(): Promise<Server> {
   });
 
   server.on("close", () => {
-    if (activeServer === server) {
-      activeServer = null;
-    }
     rateLimiter.stop();
     rateLimiter.clear();
     
@@ -865,19 +884,24 @@ export async function startServer(): Promise<Server> {
     }
   });
 
-  return server;
-}
+  registerSignalHandlers({
+    server,
+    stopBackgroundWork: () => {
+      rateLimiter.stop();
+      rateLimiter.clear();
+      if (cacheCleanupInterval) {
+        clearInterval(cacheCleanupInterval);
+        cacheCleanupInterval = null;
+      }
+    },
+    closeDatabase: async () => {
+      if (ENABLE_DATABASE) {
+        await inferenceDatabase.close();
+      }
+    },
+  });
 
-// Graceful shutdown handler for database
-async function gracefulShutdown(): Promise<void> {
-  logger.info('Starting graceful shutdown...');
-  
-  // Close database connection
-  if (ENABLE_DATABASE) {
-    await inferenceDatabase.close();
-  }
-  
-  process.exit(0);
+  return server;
 }
 
 if (process.env.SKIP_SERVER_START !== "true") {
@@ -886,7 +910,3 @@ if (process.env.SKIP_SERVER_START !== "true") {
     process.exit(1);
   });
 }
-
-// Handle graceful shutdown signals
-process.on('SIGINT', gracefulShutdown);
-process.on('SIGTERM', gracefulShutdown);
